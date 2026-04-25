@@ -1,0 +1,2173 @@
+--[[
+╔═══════════════════════════════════════════════════════════════╗
+║                      x11 UI Library                           ║
+║           A complete, standalone Roblox UI framework          ║
+║                                                               ║
+║  Elements: Button, Toggle, Slider, Input, Dropdown,           ║
+║            ColorPicker, Keybind, Label, Section, Paragraph,   ║
+║            Separator, Progress, Stepper, RadioGroup,          ║
+║            Checkbox List, Textarea, Accordion, Badge          ║
+║                                                               ║
+║  Systems:  12 Themes + Custom, Config Save/Load/Profiles,     ║
+║            Key System, Loading Screen, Notifications,         ║
+║            Search, Draggable, Minimize, Mobile Support        ║
+╚═══════════════════════════════════════════════════════════════╝
+]]
+
+-- ═══════════════════════════════════════════════════════════════
+-- SERVICES
+-- ═══════════════════════════════════════════════════════════════
+local Players          = game:GetService("Players")
+local UIS              = game:GetService("UserInputService")
+local TweenService     = game:GetService("TweenService")
+local RunService       = game:GetService("RunService")
+local CoreGui          = game:GetService("CoreGui")
+local HttpService      = game:GetService("HttpService")
+local LocalPlayer      = Players.LocalPlayer
+
+-- ═══════════════════════════════════════════════════════════════
+-- UTILITY HELPERS
+-- ═══════════════════════════════════════════════════════════════
+local function tw(obj, t, props, style, dir)
+    TweenService:Create(obj,
+        TweenInfo.new(t, style or Enum.EasingStyle.Exponential, dir or Enum.EasingDirection.Out),
+        props):Play()
+end
+
+local function clamp(v,a,b) return math.max(a, math.min(b, v)) end
+local function round(n,d) local m=10^(d or 0); return math.floor(n*m+.5)/m end
+local function lerp(a,b,t) return a+(b-a)*t end
+
+local function corner(p, r)
+    local c = Instance.new("UICorner"); c.CornerRadius=UDim.new(0,r or 6); c.Parent=p; return c
+end
+local function stroke(p, col, thick, trans)
+    local s = Instance.new("UIStroke"); s.Color=col or Color3.fromRGB(55,55,55)
+    s.Thickness=thick or 1; s.Transparency=trans or 0; s.Parent=p; return s
+end
+local function padding(p,t,b,l,r)
+    local u=Instance.new("UIPadding")
+    u.PaddingTop=UDim.new(0,t or 0); u.PaddingBottom=UDim.new(0,b or 0)
+    u.PaddingLeft=UDim.new(0,l or 0); u.PaddingRight=UDim.new(0,r or 0)
+    u.Parent=p; return u
+end
+local function listLayout(p, dir, pad, align)
+    local l=Instance.new("UIListLayout")
+    l.FillDirection=dir or Enum.FillDirection.Vertical
+    l.Padding=UDim.new(0,pad or 6)
+    l.SortOrder=Enum.SortOrder.LayoutOrder
+    if align then l.HorizontalAlignment=align end
+    l.Parent=p; return l
+end
+local function make(class, props, parent)
+    local o=Instance.new(class)
+    for k,v in pairs(props) do o[k]=v end
+    if parent then o.Parent=parent end
+    return o
+end
+local function label(props, parent)
+    props.BackgroundTransparency = props.BackgroundTransparency or 1
+    props.Font = props.Font or Enum.Font.Gotham
+    props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Left
+    return make("TextLabel", props, parent)
+end
+local function btn(props, parent)
+    props.BackgroundTransparency = props.BackgroundTransparency or 1
+    props.Font = props.Font or Enum.Font.GothamBold
+    props.TextXAlignment = props.TextXAlignment or Enum.TextXAlignment.Center
+    props.AutoButtonColor = false
+    return make("TextButton", props, parent)
+end
+
+-- JSON helpers (safe pcall wrappers)
+local function jsonEncode(t)
+    local ok, r = pcall(HttpService.JSONEncode, HttpService, t)
+    return ok and r or nil
+end
+local function jsonDecode(s)
+    local ok, r = pcall(HttpService.JSONDecode, HttpService, s)
+    return ok and r or nil
+end
+
+-- Filesystem helpers
+local function safeWrite(path, data)
+    if writefile then pcall(writefile, path, data) end
+end
+local function safeRead(path)
+    if isfile and readfile and pcall(isfile, path) and isfile(path) then
+        local ok, r = pcall(readfile, path)
+        return ok and r or nil
+    end
+end
+local function safeFolder(path)
+    if isfolder and makefolder then
+        if not (pcall(isfolder, path) and isfolder(path)) then
+            pcall(makefolder, path)
+        end
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- THEME DEFINITIONS
+-- ═══════════════════════════════════════════════════════════════
+local Themes = {}
+
+local function defTheme(name, t) Themes[name] = t end
+
+defTheme("Default", {
+    Background        = Color3.fromRGB(20,20,20),
+    Topbar            = Color3.fromRGB(28,28,28),
+    Sidebar           = Color3.fromRGB(16,16,16),
+    ElementBG         = Color3.fromRGB(30,30,30),
+    ElementBGHover    = Color3.fromRGB(40,40,40),
+    ElementBGActive   = Color3.fromRGB(45,45,45),
+    ElementStroke     = Color3.fromRGB(50,50,50),
+    SectionText       = Color3.fromRGB(110,110,110),
+    Text              = Color3.fromRGB(235,235,235),
+    SubText           = Color3.fromRGB(155,155,155),
+    Placeholder       = Color3.fromRGB(90,90,90),
+    Accent            = Color3.fromRGB(50,138,220),
+    AccentHover       = Color3.fromRGB(70,158,240),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(50,200,100),
+    ToggleOff         = Color3.fromRGB(200,60,60),
+    ToggleKnob        = Color3.fromRGB(255,255,255),
+    SliderFill        = Color3.fromRGB(50,138,220),
+    SliderBG          = Color3.fromRGB(45,45,45),
+    SliderKnob        = Color3.fromRGB(255,255,255),
+    NotifBG           = Color3.fromRGB(18,18,18),
+    NotifStroke       = Color3.fromRGB(50,50,50),
+    InputBG           = Color3.fromRGB(25,25,25),
+    InputStroke       = Color3.fromRGB(55,55,55),
+    DropdownBG        = Color3.fromRGB(18,18,18),
+    DropdownItem      = Color3.fromRGB(26,26,26),
+    DropdownHover     = Color3.fromRGB(36,36,36),
+    TabSelected       = Color3.fromRGB(200,200,200),
+    TabSelectedText   = Color3.fromRGB(20,20,20),
+    TabUnselected     = Color3.fromRGB(70,70,70),
+    TabUnselectedText = Color3.fromRGB(200,200,200),
+    Divider           = Color3.fromRGB(40,40,40),
+    ProgressFG        = Color3.fromRGB(50,138,220),
+    ProgressBG        = Color3.fromRGB(40,40,40),
+    Success           = Color3.fromRGB(50,200,100),
+    Warning           = Color3.fromRGB(240,180,50),
+    Error             = Color3.fromRGB(220,60,60),
+    Info              = Color3.fromRGB(50,138,220),
+    CheckboxOn        = Color3.fromRGB(50,138,220),
+    RadioOn           = Color3.fromRGB(50,138,220),
+})
+
+defTheme("Ocean", {
+    Background        = Color3.fromRGB(10,25,35),
+    Topbar            = Color3.fromRGB(15,35,48),
+    Sidebar           = Color3.fromRGB(8,20,30),
+    ElementBG         = Color3.fromRGB(14,32,44),
+    ElementBGHover    = Color3.fromRGB(20,42,58),
+    ElementBGActive   = Color3.fromRGB(25,50,68),
+    ElementStroke     = Color3.fromRGB(25,60,80),
+    SectionText       = Color3.fromRGB(80,130,160),
+    Text              = Color3.fromRGB(210,235,245),
+    SubText           = Color3.fromRGB(120,165,185),
+    Placeholder       = Color3.fromRGB(70,110,130),
+    Accent            = Color3.fromRGB(0,180,200),
+    AccentHover       = Color3.fromRGB(0,210,230),
+    AccentText        = Color3.fromRGB(0,20,30),
+    ToggleOn          = Color3.fromRGB(0,200,180),
+    ToggleOff         = Color3.fromRGB(180,60,80),
+    ToggleKnob        = Color3.fromRGB(240,255,255),
+    SliderFill        = Color3.fromRGB(0,180,200),
+    SliderBG          = Color3.fromRGB(20,50,65),
+    SliderKnob        = Color3.fromRGB(200,240,245),
+    NotifBG           = Color3.fromRGB(10,28,38),
+    NotifStroke       = Color3.fromRGB(25,60,80),
+    InputBG           = Color3.fromRGB(10,25,35),
+    InputStroke       = Color3.fromRGB(25,60,80),
+    DropdownBG        = Color3.fromRGB(10,22,30),
+    DropdownItem      = Color3.fromRGB(14,30,42),
+    DropdownHover     = Color3.fromRGB(20,42,56),
+    TabSelected       = Color3.fromRGB(0,180,200),
+    TabSelectedText   = Color3.fromRGB(0,20,30),
+    TabUnselected     = Color3.fromRGB(25,55,72),
+    TabUnselectedText = Color3.fromRGB(150,195,215),
+    Divider           = Color3.fromRGB(20,50,65),
+    ProgressFG        = Color3.fromRGB(0,180,200),
+    ProgressBG        = Color3.fromRGB(20,50,65),
+    Success           = Color3.fromRGB(0,200,150),
+    Warning           = Color3.fromRGB(220,160,50),
+    Error             = Color3.fromRGB(200,60,80),
+    Info              = Color3.fromRGB(0,180,200),
+    CheckboxOn        = Color3.fromRGB(0,180,200),
+    RadioOn           = Color3.fromRGB(0,180,200),
+})
+
+defTheme("Amethyst", {
+    Background        = Color3.fromRGB(22,14,36),
+    Topbar            = Color3.fromRGB(30,18,48),
+    Sidebar           = Color3.fromRGB(17,10,28),
+    ElementBG         = Color3.fromRGB(28,16,44),
+    ElementBGHover    = Color3.fromRGB(38,22,58),
+    ElementBGActive   = Color3.fromRGB(45,28,68),
+    ElementStroke     = Color3.fromRGB(60,35,90),
+    SectionText       = Color3.fromRGB(130,90,175),
+    Text              = Color3.fromRGB(235,220,255),
+    SubText           = Color3.fromRGB(170,140,210),
+    Placeholder       = Color3.fromRGB(100,70,140),
+    Accent            = Color3.fromRGB(160,80,255),
+    AccentHover       = Color3.fromRGB(180,110,255),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(140,60,240),
+    ToggleOff         = Color3.fromRGB(180,50,100),
+    ToggleKnob        = Color3.fromRGB(240,225,255),
+    SliderFill        = Color3.fromRGB(160,80,255),
+    SliderBG          = Color3.fromRGB(50,28,78),
+    SliderKnob        = Color3.fromRGB(230,200,255),
+    NotifBG           = Color3.fromRGB(20,12,32),
+    NotifStroke       = Color3.fromRGB(60,35,90),
+    InputBG           = Color3.fromRGB(22,12,36),
+    InputStroke       = Color3.fromRGB(60,35,90),
+    DropdownBG        = Color3.fromRGB(18,10,30),
+    DropdownItem      = Color3.fromRGB(26,15,40),
+    DropdownHover     = Color3.fromRGB(36,22,55),
+    TabSelected       = Color3.fromRGB(190,140,255),
+    TabSelectedText   = Color3.fromRGB(22,10,40),
+    TabUnselected     = Color3.fromRGB(55,32,85),
+    TabUnselectedText = Color3.fromRGB(190,160,230),
+    Divider           = Color3.fromRGB(50,28,75),
+    ProgressFG        = Color3.fromRGB(160,80,255),
+    ProgressBG        = Color3.fromRGB(50,28,78),
+    Success           = Color3.fromRGB(120,220,120),
+    Warning           = Color3.fromRGB(240,190,60),
+    Error             = Color3.fromRGB(220,70,100),
+    Info              = Color3.fromRGB(160,80,255),
+    CheckboxOn        = Color3.fromRGB(160,80,255),
+    RadioOn           = Color3.fromRGB(160,80,255),
+})
+
+defTheme("Ember", {
+    Background        = Color3.fromRGB(28,14,10),
+    Topbar            = Color3.fromRGB(38,20,14),
+    Sidebar           = Color3.fromRGB(22,10,8),
+    ElementBG         = Color3.fromRGB(35,18,12),
+    ElementBGHover    = Color3.fromRGB(48,26,18),
+    ElementBGActive   = Color3.fromRGB(55,32,22),
+    ElementStroke     = Color3.fromRGB(80,40,25),
+    SectionText       = Color3.fromRGB(175,100,60),
+    Text              = Color3.fromRGB(255,235,220),
+    SubText           = Color3.fromRGB(200,160,130),
+    Placeholder       = Color3.fromRGB(120,80,55),
+    Accent            = Color3.fromRGB(255,120,40),
+    AccentHover       = Color3.fromRGB(255,145,65),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(255,140,30),
+    ToggleOff         = Color3.fromRGB(160,50,50),
+    ToggleKnob        = Color3.fromRGB(255,240,230),
+    SliderFill        = Color3.fromRGB(255,120,40),
+    SliderBG          = Color3.fromRGB(60,30,18),
+    SliderKnob        = Color3.fromRGB(255,220,200),
+    NotifBG           = Color3.fromRGB(25,12,8),
+    NotifStroke       = Color3.fromRGB(80,40,25),
+    InputBG           = Color3.fromRGB(28,14,10),
+    InputStroke       = Color3.fromRGB(80,40,25),
+    DropdownBG        = Color3.fromRGB(22,10,8),
+    DropdownItem      = Color3.fromRGB(32,16,11),
+    DropdownHover     = Color3.fromRGB(44,24,16),
+    TabSelected       = Color3.fromRGB(255,160,80),
+    TabSelectedText   = Color3.fromRGB(30,10,5),
+    TabUnselected     = Color3.fromRGB(70,35,22),
+    TabUnselectedText = Color3.fromRGB(220,175,145),
+    Divider           = Color3.fromRGB(65,30,18),
+    ProgressFG        = Color3.fromRGB(255,120,40),
+    ProgressBG        = Color3.fromRGB(60,30,18),
+    Success           = Color3.fromRGB(100,220,100),
+    Warning           = Color3.fromRGB(255,200,50),
+    Error             = Color3.fromRGB(220,60,60),
+    Info              = Color3.fromRGB(255,120,40),
+    CheckboxOn        = Color3.fromRGB(255,120,40),
+    RadioOn           = Color3.fromRGB(255,120,40),
+})
+
+defTheme("Mint", {
+    Background        = Color3.fromRGB(10,28,22),
+    Topbar            = Color3.fromRGB(14,38,30),
+    Sidebar           = Color3.fromRGB(8,22,18),
+    ElementBG         = Color3.fromRGB(12,34,26),
+    ElementBGHover    = Color3.fromRGB(18,46,36),
+    ElementBGActive   = Color3.fromRGB(22,55,43),
+    ElementStroke     = Color3.fromRGB(25,70,52),
+    SectionText       = Color3.fromRGB(80,170,120),
+    Text              = Color3.fromRGB(215,245,230),
+    SubText           = Color3.fromRGB(140,200,170),
+    Placeholder       = Color3.fromRGB(70,120,95),
+    Accent            = Color3.fromRGB(50,220,130),
+    AccentHover       = Color3.fromRGB(75,240,155),
+    AccentText        = Color3.fromRGB(5,30,18),
+    ToggleOn          = Color3.fromRGB(50,220,130),
+    ToggleOff         = Color3.fromRGB(180,70,70),
+    ToggleKnob        = Color3.fromRGB(230,255,240),
+    SliderFill        = Color3.fromRGB(50,220,130),
+    SliderBG          = Color3.fromRGB(20,55,40),
+    SliderKnob        = Color3.fromRGB(200,250,225),
+    NotifBG           = Color3.fromRGB(10,26,20),
+    NotifStroke       = Color3.fromRGB(25,70,52),
+    InputBG           = Color3.fromRGB(10,26,20),
+    InputStroke       = Color3.fromRGB(25,70,52),
+    DropdownBG        = Color3.fromRGB(8,22,17),
+    DropdownItem      = Color3.fromRGB(12,30,23),
+    DropdownHover     = Color3.fromRGB(18,42,32),
+    TabSelected       = Color3.fromRGB(50,220,130),
+    TabSelectedText   = Color3.fromRGB(5,30,18),
+    TabUnselected     = Color3.fromRGB(20,60,44),
+    TabUnselectedText = Color3.fromRGB(140,210,170),
+    Divider           = Color3.fromRGB(18,55,40),
+    ProgressFG        = Color3.fromRGB(50,220,130),
+    ProgressBG        = Color3.fromRGB(20,55,40),
+    Success           = Color3.fromRGB(50,220,130),
+    Warning           = Color3.fromRGB(230,185,50),
+    Error             = Color3.fromRGB(210,70,70),
+    Info              = Color3.fromRGB(50,200,200),
+    CheckboxOn        = Color3.fromRGB(50,220,130),
+    RadioOn           = Color3.fromRGB(50,220,130),
+})
+
+defTheme("Rose", {
+    Background        = Color3.fromRGB(30,14,20),
+    Topbar            = Color3.fromRGB(40,18,27),
+    Sidebar           = Color3.fromRGB(24,10,16),
+    ElementBG         = Color3.fromRGB(38,18,26),
+    ElementBGHover    = Color3.fromRGB(50,24,35),
+    ElementBGActive   = Color3.fromRGB(58,30,42),
+    ElementStroke     = Color3.fromRGB(85,35,55),
+    SectionText       = Color3.fromRGB(175,90,120),
+    Text              = Color3.fromRGB(255,225,235),
+    SubText           = Color3.fromRGB(210,155,175),
+    Placeholder       = Color3.fromRGB(130,75,95),
+    Accent            = Color3.fromRGB(255,80,130),
+    AccentHover       = Color3.fromRGB(255,110,155),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(255,80,130),
+    ToggleOff         = Color3.fromRGB(120,40,60),
+    ToggleKnob        = Color3.fromRGB(255,235,242),
+    SliderFill        = Color3.fromRGB(255,80,130),
+    SliderBG          = Color3.fromRGB(70,28,44),
+    SliderKnob        = Color3.fromRGB(255,200,220),
+    NotifBG           = Color3.fromRGB(26,12,18),
+    NotifStroke       = Color3.fromRGB(85,35,55),
+    InputBG           = Color3.fromRGB(28,14,20),
+    InputStroke       = Color3.fromRGB(85,35,55),
+    DropdownBG        = Color3.fromRGB(22,10,16),
+    DropdownItem      = Color3.fromRGB(34,16,24),
+    DropdownHover     = Color3.fromRGB(46,22,33),
+    TabSelected       = Color3.fromRGB(255,130,165),
+    TabSelectedText   = Color3.fromRGB(30,8,18),
+    TabUnselected     = Color3.fromRGB(75,30,48),
+    TabUnselectedText = Color3.fromRGB(220,165,185),
+    Divider           = Color3.fromRGB(65,25,42),
+    ProgressFG        = Color3.fromRGB(255,80,130),
+    ProgressBG        = Color3.fromRGB(70,28,44),
+    Success           = Color3.fromRGB(100,220,130),
+    Warning           = Color3.fromRGB(240,185,55),
+    Error             = Color3.fromRGB(220,60,80),
+    Info              = Color3.fromRGB(255,80,130),
+    CheckboxOn        = Color3.fromRGB(255,80,130),
+    RadioOn           = Color3.fromRGB(255,80,130),
+})
+
+defTheme("Slate", {
+    Background        = Color3.fromRGB(15,20,28),
+    Topbar            = Color3.fromRGB(20,28,38),
+    Sidebar           = Color3.fromRGB(12,16,24),
+    ElementBG         = Color3.fromRGB(20,27,37),
+    ElementBGHover    = Color3.fromRGB(28,37,50),
+    ElementBGActive   = Color3.fromRGB(34,44,60),
+    ElementStroke     = Color3.fromRGB(38,52,70),
+    SectionText       = Color3.fromRGB(95,120,155),
+    Text              = Color3.fromRGB(215,228,245),
+    SubText           = Color3.fromRGB(145,165,195),
+    Placeholder       = Color3.fromRGB(80,100,130),
+    Accent            = Color3.fromRGB(90,150,255),
+    AccentHover       = Color3.fromRGB(115,170,255),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(90,150,255),
+    ToggleOff         = Color3.fromRGB(160,60,70),
+    ToggleKnob        = Color3.fromRGB(230,240,255),
+    SliderFill        = Color3.fromRGB(90,150,255),
+    SliderBG          = Color3.fromRGB(30,42,58),
+    SliderKnob        = Color3.fromRGB(200,220,255),
+    NotifBG           = Color3.fromRGB(14,19,27),
+    NotifStroke       = Color3.fromRGB(38,52,70),
+    InputBG           = Color3.fromRGB(15,20,30),
+    InputStroke       = Color3.fromRGB(38,52,70),
+    DropdownBG        = Color3.fromRGB(12,17,25),
+    DropdownItem      = Color3.fromRGB(18,25,35),
+    DropdownHover     = Color3.fromRGB(26,35,48),
+    TabSelected       = Color3.fromRGB(140,180,255),
+    TabSelectedText   = Color3.fromRGB(10,18,35),
+    TabUnselected     = Color3.fromRGB(32,46,64),
+    TabUnselectedText = Color3.fromRGB(165,190,225),
+    Divider           = Color3.fromRGB(28,40,56),
+    ProgressFG        = Color3.fromRGB(90,150,255),
+    ProgressBG        = Color3.fromRGB(30,42,58),
+    Success           = Color3.fromRGB(80,210,130),
+    Warning           = Color3.fromRGB(230,180,55),
+    Error             = Color3.fromRGB(210,70,80),
+    Info              = Color3.fromRGB(90,150,255),
+    CheckboxOn        = Color3.fromRGB(90,150,255),
+    RadioOn           = Color3.fromRGB(90,150,255),
+})
+
+defTheme("Light", {
+    Background        = Color3.fromRGB(245,245,248),
+    Topbar            = Color3.fromRGB(230,230,235),
+    Sidebar           = Color3.fromRGB(238,238,242),
+    ElementBG         = Color3.fromRGB(255,255,255),
+    ElementBGHover    = Color3.fromRGB(240,240,245),
+    ElementBGActive   = Color3.fromRGB(232,232,238),
+    ElementStroke     = Color3.fromRGB(210,210,215),
+    SectionText       = Color3.fromRGB(140,140,150),
+    Text              = Color3.fromRGB(30,30,40),
+    SubText           = Color3.fromRGB(100,100,115),
+    Placeholder       = Color3.fromRGB(175,175,185),
+    Accent            = Color3.fromRGB(50,120,220),
+    AccentHover       = Color3.fromRGB(70,140,240),
+    AccentText        = Color3.fromRGB(255,255,255),
+    ToggleOn          = Color3.fromRGB(50,180,100),
+    ToggleOff         = Color3.fromRGB(200,60,60),
+    ToggleKnob        = Color3.fromRGB(255,255,255),
+    SliderFill        = Color3.fromRGB(50,120,220),
+    SliderBG          = Color3.fromRGB(200,200,210),
+    SliderKnob        = Color3.fromRGB(255,255,255),
+    NotifBG           = Color3.fromRGB(255,255,255),
+    NotifStroke       = Color3.fromRGB(210,210,215),
+    InputBG           = Color3.fromRGB(250,250,253),
+    InputStroke       = Color3.fromRGB(200,200,210),
+    DropdownBG        = Color3.fromRGB(255,255,255),
+    DropdownItem      = Color3.fromRGB(248,248,252),
+    DropdownHover     = Color3.fromRGB(238,238,245),
+    TabSelected       = Color3.fromRGB(50,120,220),
+    TabSelectedText   = Color3.fromRGB(255,255,255),
+    TabUnselected     = Color3.fromRGB(220,220,225),
+    TabUnselectedText = Color3.fromRGB(80,80,95),
+    Divider           = Color3.fromRGB(215,215,220),
+    ProgressFG        = Color3.fromRGB(50,120,220),
+    ProgressBG        = Color3.fromRGB(210,210,220),
+    Success           = Color3.fromRGB(40,170,90),
+    Warning           = Color3.fromRGB(220,160,40),
+    Error             = Color3.fromRGB(200,55,55),
+    Info              = Color3.fromRGB(50,120,220),
+    CheckboxOn        = Color3.fromRGB(50,120,220),
+    RadioOn           = Color3.fromRGB(50,120,220),
+})
+
+defTheme("Neon", {
+    Background        = Color3.fromRGB(5,5,8),
+    Topbar            = Color3.fromRGB(8,8,14),
+    Sidebar           = Color3.fromRGB(3,3,6),
+    ElementBG         = Color3.fromRGB(8,8,14),
+    ElementBGHover    = Color3.fromRGB(14,14,22),
+    ElementBGActive   = Color3.fromRGB(18,18,28),
+    ElementStroke     = Color3.fromRGB(0,255,180),
+    SectionText       = Color3.fromRGB(0,200,140),
+    Text              = Color3.fromRGB(200,255,240),
+    SubText           = Color3.fromRGB(100,220,180),
+    Placeholder       = Color3.fromRGB(50,140,110),
+    Accent            = Color3.fromRGB(0,255,180),
+    AccentHover       = Color3.fromRGB(80,255,200),
+    AccentText        = Color3.fromRGB(0,20,14),
+    ToggleOn          = Color3.fromRGB(0,255,180),
+    ToggleOff         = Color3.fromRGB(255,50,100),
+    ToggleKnob        = Color3.fromRGB(5,5,10),
+    SliderFill        = Color3.fromRGB(0,255,180),
+    SliderBG          = Color3.fromRGB(15,40,30),
+    SliderKnob        = Color3.fromRGB(0,255,180),
+    NotifBG           = Color3.fromRGB(5,5,10),
+    NotifStroke       = Color3.fromRGB(0,255,180),
+    InputBG           = Color3.fromRGB(5,5,10),
+    InputStroke       = Color3.fromRGB(0,200,140),
+    DropdownBG        = Color3.fromRGB(3,3,8),
+    DropdownItem      = Color3.fromRGB(8,8,15),
+    DropdownHover     = Color3.fromRGB(14,14,24),
+    TabSelected       = Color3.fromRGB(0,255,180),
+    TabSelectedText   = Color3.fromRGB(0,15,10),
+    TabUnselected     = Color3.fromRGB(14,40,30),
+    TabUnselectedText = Color3.fromRGB(100,210,170),
+    Divider           = Color3.fromRGB(0,80,60),
+    ProgressFG        = Color3.fromRGB(0,255,180),
+    ProgressBG        = Color3.fromRGB(15,40,30),
+    Success           = Color3.fromRGB(0,255,180),
+    Warning           = Color3.fromRGB(255,220,0),
+    Error             = Color3.fromRGB(255,50,100),
+    Info              = Color3.fromRGB(0,200,255),
+    CheckboxOn        = Color3.fromRGB(0,255,180),
+    RadioOn           = Color3.fromRGB(0,255,180),
+})
+
+defTheme("Mocha", {
+    Background        = Color3.fromRGB(30,24,20),
+    Topbar            = Color3.fromRGB(40,32,27),
+    Sidebar           = Color3.fromRGB(24,19,16),
+    ElementBG         = Color3.fromRGB(38,30,25),
+    ElementBGHover    = Color3.fromRGB(50,40,33),
+    ElementBGActive   = Color3.fromRGB(58,46,38),
+    ElementStroke     = Color3.fromRGB(75,58,46),
+    SectionText       = Color3.fromRGB(160,130,100),
+    Text              = Color3.fromRGB(245,232,218),
+    SubText           = Color3.fromRGB(195,170,145),
+    Placeholder       = Color3.fromRGB(120,95,75),
+    Accent            = Color3.fromRGB(200,155,100),
+    AccentHover       = Color3.fromRGB(220,175,120),
+    AccentText        = Color3.fromRGB(30,20,12),
+    ToggleOn          = Color3.fromRGB(180,140,85),
+    ToggleOff         = Color3.fromRGB(150,70,60),
+    ToggleKnob        = Color3.fromRGB(248,235,220),
+    SliderFill        = Color3.fromRGB(200,155,100),
+    SliderBG          = Color3.fromRGB(60,46,36),
+    SliderKnob        = Color3.fromRGB(240,220,195),
+    NotifBG           = Color3.fromRGB(26,20,17),
+    NotifStroke       = Color3.fromRGB(75,58,46),
+    InputBG           = Color3.fromRGB(28,22,18),
+    InputStroke       = Color3.fromRGB(75,58,46),
+    DropdownBG        = Color3.fromRGB(24,18,15),
+    DropdownItem      = Color3.fromRGB(34,26,21),
+    DropdownHover     = Color3.fromRGB(46,36,29),
+    TabSelected       = Color3.fromRGB(220,175,115),
+    TabSelectedText   = Color3.fromRGB(25,16,10),
+    TabUnselected     = Color3.fromRGB(65,50,38),
+    TabUnselectedText = Color3.fromRGB(205,175,145),
+    Divider           = Color3.fromRGB(55,43,34),
+    ProgressFG        = Color3.fromRGB(200,155,100),
+    ProgressBG        = Color3.fromRGB(60,46,36),
+    Success           = Color3.fromRGB(120,200,100),
+    Warning           = Color3.fromRGB(230,180,55),
+    Error             = Color3.fromRGB(210,75,65),
+    Info              = Color3.fromRGB(200,155,100),
+    CheckboxOn        = Color3.fromRGB(200,155,100),
+    RadioOn           = Color3.fromRGB(200,155,100),
+})
+
+-- Active theme (starts as Default, changes via SetTheme)
+local T = {}
+for k,v in pairs(Themes.Default) do T[k]=v end
+
+-- ═══════════════════════════════════════════════════════════════
+-- GUI SETUP
+-- ═══════════════════════════════════════════════════════════════
+local Root = Instance.new("ScreenGui")
+Root.Name           = "x11"
+Root.ResetOnSpawn   = false
+Root.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+Root.DisplayOrder   = 999
+Root.IgnoreGuiInset = true
+
+if gethui then
+    Root.Parent = gethui()
+elseif syn and syn.protect_gui then
+    syn.protect_gui(Root); Root.Parent = CoreGui
+else
+    pcall(function() Root.Parent = CoreGui end)
+    if not Root.Parent or Root.Parent ~= CoreGui then
+        Root.Parent = LocalPlayer:WaitForChild("PlayerGui")
+    end
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- LIBRARY TABLE
+-- ═══════════════════════════════════════════════════════════════
+local x11       = {}
+x11.__index     = x11
+x11.Flags       = {}
+x11.Themes      = Themes
+x11._windows    = {}
+x11._configPath = "x11"
+x11._allElements= {}   -- {frame, searchName, tab} for global search
+
+-- ═══════════════════════════════════════════════════════════════
+-- DRAGGING
+-- ═══════════════════════════════════════════════════════════════
+local function makeDraggable(frame, handle)
+    local drag, startMouse, startFrame = false, nil, nil
+    handle.InputBegan:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then
+            drag=true; startMouse=i.Position; startFrame=frame.Position
+            i.Changed:Connect(function() if i.UserInputState==Enum.UserInputState.End then drag=false end end)
+        end
+    end)
+    UIS.InputChanged:Connect(function(i)
+        if drag and (i.UserInputType==Enum.UserInputType.MouseMovement or i.UserInputType==Enum.UserInputType.Touch) then
+            local d=i.Position-startMouse
+            frame.Position=UDim2.new(startFrame.X.Scale, startFrame.X.Offset+d.X, startFrame.Y.Scale, startFrame.Y.Offset+d.Y)
+        end
+    end)
+    UIS.InputEnded:Connect(function(i)
+        if i.UserInputType==Enum.UserInputType.MouseButton1 or i.UserInputType==Enum.UserInputType.Touch then drag=false end
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- NOTIFICATION SYSTEM
+-- ═══════════════════════════════════════════════════════════════
+local NotifContainer = make("Frame", {
+    Name="x11_Notifs", Size=UDim2.new(0,300,1,0),
+    Position=UDim2.new(1,-312,0,0), BackgroundTransparency=1,
+}, Root)
+local notifLayout = listLayout(NotifContainer, Enum.FillDirection.Vertical, 8)
+notifLayout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+padding(NotifContainer, 12,12,0,0)
+
+local NOTIF_ICONS = {info="ℹ", success="✓", warning="⚠", error="✕"}
+local NOTIF_COLORS = {
+    info    = function() return T.Info end,
+    success = function() return T.Success end,
+    warning = function() return T.Warning end,
+    error   = function() return T.Error end,
+}
+
+function x11:Notify(data)
+    task.spawn(function()
+        local title    = data.Title or "Notification"
+        local content  = data.Content or ""
+        local duration = data.Duration or 5
+        local ntype    = data.Type or "info"
+        local actions  = data.Actions or {}
+
+        local accentCol = (NOTIF_COLORS[ntype] or NOTIF_COLORS.info)()
+
+        -- Card
+        local card = make("Frame",{
+            Size=UDim2.new(1,0,0,0), BackgroundColor3=T.NotifBG,
+            ClipsDescendants=true,
+        }, NotifContainer)
+        corner(card,8); stroke(card,T.NotifStroke,1)
+
+        -- Left accent bar
+        make("Frame",{
+            Size=UDim2.new(0,3,1,0), BackgroundColor3=accentCol,
+        }, card)
+        corner(make("Frame",{Size=UDim2.new(0,3,1,0),BackgroundColor3=accentCol},card),8)
+
+        local inner = make("Frame",{
+            Size=UDim2.new(1,-10,0,0), Position=UDim2.new(0,8,0,0),
+            AutomaticSize=Enum.AutomaticSize.Y, BackgroundTransparency=1,
+        }, card)
+        padding(inner,10,10,6,6)
+        listLayout(inner, Enum.FillDirection.Vertical, 4)
+
+        -- Icon + title row
+        local headerRow = make("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1}, inner)
+        label({
+            Size=UDim2.new(0,18,1,0), Text=NOTIF_ICONS[ntype] or "•",
+            TextColor3=accentCol, TextSize=14, Font=Enum.Font.GothamBold,
+        }, headerRow)
+        label({
+            Size=UDim2.new(1,-22,1,0), Position=UDim2.new(0,22,0,0),
+            Text=title, TextColor3=T.Text, TextSize=13, Font=Enum.Font.GothamBold,
+        }, headerRow)
+
+        -- Content
+        label({
+            Size=UDim2.new(1,0,0,0), AutomaticSize=Enum.AutomaticSize.Y,
+            Text=content, TextColor3=T.SubText, TextSize=12,
+            TextWrapped=true, Font=Enum.Font.Gotham,
+        }, inner)
+
+        -- Progress bar
+        local progBG = make("Frame",{Size=UDim2.new(1,0,0,2),BackgroundColor3=T.Divider}, inner)
+        corner(progBG,1)
+        local progFill = make("Frame",{Size=UDim2.new(1,0,1,0),BackgroundColor3=accentCol}, progBG)
+        corner(progFill,1)
+
+        -- Action buttons
+        if #actions > 0 then
+            local actRow = make("Frame",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1}, inner)
+            listLayout(actRow, Enum.FillDirection.Horizontal, 8)
+            for _, act in ipairs(actions) do
+                local ab = btn({
+                    Size=UDim2.new(0,0,1,0), AutomaticSize=Enum.AutomaticSize.X,
+                    Text=act.Name or "Action", TextColor3=accentCol, TextSize=12,
+                    Font=Enum.Font.GothamBold, BackgroundTransparency=1,
+                }, actRow)
+                padding(ab,0,0,4,4)
+                ab.MouseButton1Click:Connect(function()
+                    if act.Callback then pcall(act.Callback) end
+                end)
+            end
+        end
+
+        -- Dismiss
+        local dismissRow = make("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1}, inner)
+        local dismissBtn = btn({
+            Size=UDim2.new(0,55,1,0), Text="Dismiss",
+            TextColor3=T.SubText, TextSize=11, Font=Enum.Font.Gotham,
+        }, dismissRow)
+
+        -- Calc height and animate in
+        task.wait(0.02)
+        local h = inner.AbsoluteSize.Y + 20
+        h = math.max(h, 70)
+        tw(card, 0.4, {Size=UDim2.new(1,0,0,h)})
+
+        -- Countdown timer on progress bar
+        local elapsed = 0
+        local conn
+        conn = RunService.Heartbeat:Connect(function(dt)
+            elapsed = elapsed + dt
+            local pct = 1 - clamp(elapsed/duration,0,1)
+            progFill.Size = UDim2.new(pct,0,1,0)
+            if elapsed >= duration then conn:Disconnect() end
+        end)
+
+        local function dismiss()
+            conn:Disconnect()
+            tw(card, 0.3, {BackgroundTransparency=1, Size=UDim2.new(1,0,0,0)})
+            task.wait(0.35); card:Destroy()
+        end
+        dismissBtn.MouseButton1Click:Connect(dismiss)
+        task.delay(duration, function() if card.Parent then dismiss() end end)
+    end)
+end
+
+-- ═══════════════════════════════════════════════════════════════
+-- CREATE WINDOW
+-- ═══════════════════════════════════════════════════════════════
+function x11:CreateWindow(cfg)
+    cfg = cfg or {}
+    local winName    = cfg.Name or "x11"
+    local winSubtitle= cfg.Subtitle or ""
+    local initTheme  = cfg.Theme or "Default"
+    local configCfg  = cfg.ConfigurationSaving or {}
+    local keyCfg     = cfg.KeySystem
+    local loadTitle  = cfg.LoadingTitle or winName
+    local loadSub    = cfg.LoadingSubtitle or "Loading..."
+    local toggleKey  = cfg.ToggleKey or "RightShift"
+    local rank       = cfg.Rank or "User"
+    local icon       = cfg.Icon
+
+    -- Apply theme
+    local function applyTheme(name)
+        local src = type(name)=="table" and name or Themes[name]
+        if not src then src = Themes.Default end
+        for k,v in pairs(src) do T[k]=v end
+    end
+    applyTheme(initTheme)
+
+    -- Config setup
+    local configFolder  = configCfg.FolderName or "x11"
+    local configFile    = configCfg.FileName or winName
+    local configEnabled = configCfg.Enabled or false
+    safeFolder(configFolder)
+    safeFolder(configFolder.."/Profiles")
+
+    -- ── TOPBAR ────────────────────────────────────────────────
+    local Topbar = make("Frame",{
+        Name="x11_Topbar", Size=UDim2.new(1,0,0,46),
+        BackgroundColor3=Color3.fromRGB(10,10,10), BorderSizePixel=0,
+    }, Root)
+    -- Subtle bottom border
+    make("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),
+        BackgroundColor3=T.Divider,BorderSizePixel=0}, Topbar)
+
+    -- Avatar
+    local avatarImg = make("ImageLabel",{
+        Size=UDim2.new(0,30,0,30), Position=UDim2.new(0,12,0.5,-15),
+        BackgroundColor3=T.ElementBG,
+        Image="rbxthumb://type=AvatarHeadShot&id="..LocalPlayer.UserId.."&w=48&h=48",
+        ScaleType=Enum.ScaleType.Crop,
+    }, Topbar)
+    corner(avatarImg,15)
+
+    -- Name / rank
+    label({Size=UDim2.new(0,180,0,16),Position=UDim2.new(0,50,0.5,-16),
+        Text=LocalPlayer.DisplayName,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold}, Topbar)
+    label({Size=UDim2.new(0,180,0,14),Position=UDim2.new(0,50,0.5,2),
+        Text=rank,TextColor3=T.SubText,TextSize=11}, Topbar)
+
+    -- Toggle button at top-center
+    local toggleBtn = btn({
+        Size=UDim2.new(0,110,0,22), Position=UDim2.new(0.5,-55,0,0),
+        Text="Toggle "..winName, TextColor3=T.Text, TextSize=11,
+        Font=Enum.Font.GothamBold, BackgroundColor3=T.ElementBG,
+        BackgroundTransparency=0,
+    }, Root)
+    corner(toggleBtn,6)
+    stroke(toggleBtn,T.ElementStroke,1)
+    -- Square top corners fix
+    make("Frame",{Size=UDim2.new(1,0,0,6),BackgroundColor3=T.ElementBG,BorderSizePixel=0,ZIndex=2},toggleBtn)
+
+    -- Search
+    local searchBox = make("TextBox",{
+        Size=UDim2.new(0,260,0,26), Position=UDim2.new(0.5,-130,0.5,-13),
+        BackgroundColor3=T.InputBG, TextColor3=T.Text,
+        PlaceholderText="Search...", PlaceholderColor3=T.Placeholder,
+        TextSize=12, Font=Enum.Font.Gotham, ClearTextOnFocus=false, Text="",
+    }, Topbar)
+    corner(searchBox,6); stroke(searchBox,T.InputStroke,1); padding(searchBox,0,0,10,10)
+
+    -- Exit
+    local exitBtn = btn({
+        Size=UDim2.new(0,56,0,28), Position=UDim2.new(1,-70,0.5,-14),
+        Text="Exit", TextColor3=T.Text, TextSize=12, Font=Enum.Font.GothamBold,
+        BackgroundColor3=T.ElementBG, BackgroundTransparency=0,
+    }, Topbar)
+    corner(exitBtn,6); stroke(exitBtn,T.ElementStroke,1)
+
+    -- ── LOADING SCREEN ────────────────────────────────────────
+    local LoadScreen = make("Frame",{
+        Name="LoadScreen", Size=UDim2.new(1,0,1,0),
+        BackgroundColor3=Color3.fromRGB(5,5,5), ZIndex=500,
+    }, Root)
+    make("Frame",{Size=UDim2.new(0,1,0,1),BackgroundTransparency=1}, LoadScreen)
+    local loadInner = make("Frame",{
+        Size=UDim2.new(0,360,0,140),
+        Position=UDim2.new(0.5,-180,0.5,-70),
+        BackgroundTransparency=1,
+    }, LoadScreen)
+    listLayout(loadInner, Enum.FillDirection.Vertical, 10)
+    padding(loadInner, 0,0,20,20)
+    label({Size=UDim2.new(1,0,0,32),Text=loadTitle,TextColor3=Color3.fromRGB(240,240,240),
+        TextSize=26,Font=Enum.Font.GothamBold,TextXAlignment=Enum.TextXAlignment.Center}, loadInner)
+    label({Size=UDim2.new(1,0,0,18),Text=loadSub,TextColor3=Color3.fromRGB(150,150,150),
+        TextSize=14,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Center}, loadInner)
+    -- Loading bar
+    local loadBarBG = make("Frame",{Size=UDim2.new(1,0,0,4),BackgroundColor3=Color3.fromRGB(30,30,30)},loadInner)
+    corner(loadBarBG,2)
+    local loadBarFill = make("Frame",{Size=UDim2.new(0,0,1,0),BackgroundColor3=T.Accent},loadBarBG)
+    corner(loadBarFill,2)
+    label({Size=UDim2.new(1,0,0,14),Text="x11 UI Library",TextColor3=Color3.fromRGB(70,70,70),
+        TextSize=11,Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Center},loadInner)
+
+    -- Animate loading bar
+    task.spawn(function()
+        tw(loadBarFill, 1.2, {Size=UDim2.new(0.85,0,1,0)}, Enum.EasingStyle.Sine)
+        task.wait(1.2)
+        tw(loadBarFill, 0.3, {Size=UDim2.new(1,0,1,0)}, Enum.EasingStyle.Sine)
+        task.wait(0.3)
+        tw(LoadScreen, 0.5, {BackgroundTransparency=1})
+        for _,d in ipairs(LoadScreen:GetDescendants()) do
+            if d:IsA("TextLabel") then tw(d,0.3,{TextTransparency=1}) end
+            if d:IsA("Frame") then tw(d,0.3,{BackgroundTransparency=1}) end
+        end
+        task.wait(0.5)
+        LoadScreen:Destroy()
+    end)
+
+    -- ── MAIN PANEL ────────────────────────────────────────────
+    local Panel = make("Frame",{
+        Name="x11_Panel",
+        Size=UDim2.new(0,510,0,490),
+        Position=UDim2.new(0.5,-255,0.5,-230),
+        BackgroundColor3=T.Background,
+        ClipsDescendants=false,
+    }, Root)
+    corner(Panel,8); stroke(Panel,T.ElementStroke,1)
+
+    -- Drop shadow
+    make("ImageLabel",{
+        Size=UDim2.new(1,46,1,46), Position=UDim2.new(0,-23,0,-23),
+        BackgroundTransparency=1,
+        Image="rbxassetid://6014261993",
+        ImageColor3=Color3.fromRGB(0,0,0), ImageTransparency=0.55,
+        ScaleType=Enum.ScaleType.Slice, SliceCenter=Rect.new(49,49,450,450), ZIndex=0,
+    }, Panel)
+
+    -- Title bar
+    local TitleBar = make("Frame",{
+        Size=UDim2.new(1,0,0,34), BackgroundColor3=T.Topbar,
+    }, Panel)
+    corner(TitleBar,8)
+    make("Frame",{Size=UDim2.new(1,0,0.5,0),Position=UDim2.new(0,0,0.5,0),
+        BackgroundColor3=T.Topbar,BorderSizePixel=0}, TitleBar)
+    label({Size=UDim2.new(1,-20,1,0),Position=UDim2.new(0,12,0,0),
+        Text=winName,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold}, TitleBar)
+
+    -- Minimize button in title bar
+    local minBtn = btn({
+        Size=UDim2.new(0,22,0,22),Position=UDim2.new(1,-28,0.5,-11),
+        Text="—",TextColor3=T.SubText,TextSize=13,Font=Enum.Font.GothamBold,
+        BackgroundTransparency=1,
+    }, TitleBar)
+
+    makeDraggable(Panel, TitleBar)
+
+    -- Divider
+    make("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,34),
+        BackgroundColor3=T.Divider,BorderSizePixel=0}, Panel)
+
+    -- Sidebar
+    local Sidebar = make("Frame",{
+        Name="Sidebar",Size=UDim2.new(0,128,1,-35),Position=UDim2.new(0,0,0,35),
+        BackgroundColor3=T.Sidebar,BorderSizePixel=0,ClipsDescendants=true,
+    }, Panel)
+    corner(Sidebar,8)
+    make("Frame",{Size=UDim2.new(1,0,0.5,0),Position=UDim2.new(0.5,0,0.5,0),
+        BackgroundColor3=T.Sidebar,BorderSizePixel=0}, Sidebar)
+    -- Right edge only corners
+    make("Frame",{Size=UDim2.new(0,8,1,0),BackgroundColor3=T.Sidebar,BorderSizePixel=0},Panel)
+
+    local SideScroll = make("ScrollingFrame",{
+        Size=UDim2.new(1,0,1,0), BackgroundTransparency=1,
+        ScrollBarThickness=0, CanvasSize=UDim2.new(0,0,0,0),
+        AutomaticCanvasSize=Enum.AutomaticSize.Y,
+    }, Sidebar)
+    padding(SideScroll,8,8,6,6)
+    listLayout(SideScroll, Enum.FillDirection.Vertical, 3)
+
+    -- Sidebar divider line
+    make("Frame",{Size=UDim2.new(0,1,1,-35),Position=UDim2.new(0,128,0,35),
+        BackgroundColor3=T.Divider,BorderSizePixel=0}, Panel)
+
+    -- Content area
+    local Content = make("Frame",{
+        Name="Content",Size=UDim2.new(1,-130,1,-35),Position=UDim2.new(0,130,0,35),
+        BackgroundTransparency=1,ClipsDescendants=true,
+    }, Panel)
+
+    -- Minimize logic
+    local minimized = false
+    minBtn.MouseButton1Click:Connect(function()
+        minimized = not minimized
+        if minimized then
+            tw(Panel, 0.3, {Size=UDim2.new(0,510,0,34)})
+            Sidebar.Visible = false; Content.Visible = false
+        else
+            tw(Panel, 0.3, {Size=UDim2.new(0,510,0,490)})
+            task.wait(0.1); Sidebar.Visible = true; Content.Visible = true
+        end
+    end)
+
+    -- Toggle panel
+    local panelVisible = true
+    toggleBtn.MouseButton1Click:Connect(function()
+        panelVisible = not panelVisible
+        Panel.Visible = panelVisible; Topbar.Visible = panelVisible
+    end)
+    exitBtn.MouseButton1Click:Connect(function() Root:Destroy() end)
+
+    -- Global keybind toggle
+    UIS.InputBegan:Connect(function(i, proc)
+        if proc then return end
+        if i.UserInputType==Enum.UserInputType.Keyboard then
+            if i.KeyCode.Name==toggleKey then
+                panelVisible = not panelVisible
+                Panel.Visible = panelVisible; Topbar.Visible = panelVisible
+            end
+        end
+    end)
+
+    -- ── CONFIG SYSTEM ─────────────────────────────────────────
+    local configObj = {}
+    configObj._file = configFolder.."/"..configFile..".json"
+    configObj._data = {}
+    configObj._profiles = {}
+
+    function configObj:Save()
+        if not configEnabled then return end
+        local data = {}
+        for flag, elem in pairs(x11.Flags) do
+            if not elem._noSave then
+                if elem.Type=="Toggle"      then data[flag]=elem.CurrentValue
+                elseif elem.Type=="Slider"  then data[flag]=elem.CurrentValue
+                elseif elem.Type=="Input"   then data[flag]=elem.CurrentValue
+                elseif elem.Type=="Dropdown"then data[flag]=elem.CurrentOption
+                elseif elem.Type=="ColorPicker" then
+                    data[flag]={R=elem.Color.R*255,G=elem.Color.G*255,B=elem.Color.B*255}
+                elseif elem.Type=="Keybind" then data[flag]=elem.CurrentKeybind
+                elseif elem.Type=="Stepper" then data[flag]=elem.CurrentValue
+                elseif elem.Type=="RadioGroup" then data[flag]=elem.CurrentOption
+                end
+            end
+        end
+        safeWrite(self._file, jsonEncode(data) or "{}")
+    end
+
+    function configObj:Load()
+        if not configEnabled then return end
+        local raw = safeRead(self._file)
+        if not raw then return end
+        local data = jsonDecode(raw)
+        if not data then return end
+        for flag, val in pairs(data) do
+            local elem = x11.Flags[flag]
+            if elem and elem.Set then
+                pcall(function()
+                    if elem.Type=="ColorPicker" and type(val)=="table" then
+                        elem:Set(Color3.fromRGB(val.R or 255, val.G or 255, val.B or 255))
+                    elseif elem.Type=="Dropdown" and type(val)=="table" then
+                        elem:Set(val)
+                    else
+                        elem:Set(val)
+                    end
+                end)
+            end
+        end
+    end
+
+    function configObj:Reset()
+        for flag, elem in pairs(x11.Flags) do
+            if elem._default ~= nil and elem.Set then
+                pcall(elem.Set, elem, elem._default)
+            end
+        end
+    end
+
+    function configObj:SaveProfile(name)
+        if not configEnabled then return end
+        local path = configFolder.."/Profiles/"..name..".json"
+        local data = {}
+        for flag, elem in pairs(x11.Flags) do
+            if elem.Type=="Toggle"       then data[flag]=elem.CurrentValue
+            elseif elem.Type=="Slider"   then data[flag]=elem.CurrentValue
+            elseif elem.Type=="Dropdown" then data[flag]=elem.CurrentOption end
+        end
+        safeWrite(path, jsonEncode(data) or "{}")
+    end
+
+    function configObj:LoadProfile(name)
+        if not configEnabled then return end
+        local path = configFolder.."/Profiles/"..name..".json"
+        local raw = safeRead(path)
+        if not raw then return end
+        local data = jsonDecode(raw)
+        if not data then return end
+        for flag, val in pairs(data) do
+            local elem = x11.Flags[flag]
+            if elem and elem.Set then pcall(elem.Set, elem, val) end
+        end
+    end
+
+    function configObj:ExportString()
+        local data = {}
+        for flag, elem in pairs(x11.Flags) do
+            if elem.Type=="Toggle" then data[flag]=elem.CurrentValue
+            elseif elem.Type=="Slider" then data[flag]=elem.CurrentValue end
+        end
+        return jsonEncode(data) or "{}"
+    end
+
+    function configObj:ImportString(str)
+        local data = jsonDecode(str)
+        if not data then return false end
+        for flag, val in pairs(data) do
+            local elem = x11.Flags[flag]
+            if elem and elem.Set then pcall(elem.Set, elem, val) end
+        end
+        return true
+    end
+
+    -- ── TAB SYSTEM ────────────────────────────────────────────
+    local Window = {}
+    Window._tabs      = {}
+    Window._tabBtns   = {}
+    Window._active    = nil
+    Window.Config     = configObj
+
+    function Window:SetTheme(name)
+        applyTheme(name)
+        -- Re-color live elements would require a full redraw; for now
+        -- notify and suggest re-exec (common pattern in Roblox UI libs)
+        x11:Notify({Title="Theme",Content="Theme '"..tostring(name).."' applied. Re-run script to see full change.",Type="info",Duration=4})
+    end
+
+    function Window:_switch(name)
+        for n, td in pairs(self._tabs) do
+            td._scroll.Visible = (n==name)
+        end
+        for n, b in pairs(self._tabBtns) do
+            local sel = (n==name)
+            tw(b, 0.18, {
+                BackgroundColor3=sel and T.TabSelected or T.TabUnselected,
+                BackgroundTransparency=sel and 0 or 0.72,
+            })
+            b.Title.TextColor3 = sel and T.TabSelectedText or T.TabUnselectedText
+            b.Title.Font = sel and Enum.Font.GothamBold or Enum.Font.Gotham
+        end
+        self._active = name
+    end
+
+    -- Search
+    searchBox:GetPropertyChangedSignal("Text"):Connect(function()
+        local q = searchBox.Text:lower():gsub("^%s+",""):gsub("%s+$","")
+        for _, ed in ipairs(x11._allElements) do
+            if ed._frame and ed._frame.Parent then
+                local match = q=="" or (ed._name and ed._name:lower():find(q,1,true))
+                ed._frame.Visible = match ~= nil
+            end
+        end
+    end)
+
+    -- ── CREATE TAB ────────────────────────────────────────────
+    function Window:CreateTab(name, _icon, badge)
+        -- Sidebar button
+        local tabBtn = make("Frame",{
+            Name=name, Size=UDim2.new(1,0,0,28),
+            BackgroundColor3=T.TabUnselected, BackgroundTransparency=0.72,
+        }, SideScroll)
+        corner(tabBtn,6)
+        local tabTitle = label({
+            Name="Title", Size=UDim2.new(1,-10,1,0), Position=UDim2.new(0,10,0,0),
+            Text=name, TextColor3=T.TabUnselectedText, TextSize=12, Font=Enum.Font.Gotham,
+        }, tabBtn)
+        -- Badge
+        if badge then
+            local badgeFrame = make("Frame",{
+                Size=UDim2.new(0,18,0,14),Position=UDim2.new(1,-22,0.5,-7),
+                BackgroundColor3=T.Error,
+            }, tabBtn)
+            corner(badgeFrame,7)
+            label({Size=UDim2.new(1,0,1,0),Text=tostring(badge),
+                TextColor3=Color3.fromRGB(255,255,255),TextSize=9,Font=Enum.Font.GothamBold,
+                TextXAlignment=Enum.TextXAlignment.Center}, badgeFrame)
+        end
+
+        local tabInteract = btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1},tabBtn)
+
+        -- Scroll for content
+        local tabScroll = make("ScrollingFrame",{
+            Name=name.."_scroll",Size=UDim2.new(1,0,1,0),
+            BackgroundTransparency=1, ScrollBarThickness=2,
+            ScrollBarImageColor3=T.ElementStroke, Visible=false,
+            CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,
+        }, Content)
+        padding(tabScroll,8,8,8,8)
+        listLayout(tabScroll, Enum.FillDirection.Vertical, 6)
+
+        self._tabs[name]   = {_scroll=tabScroll, _elements={}}
+        self._tabBtns[name]= tabBtn
+
+        tabInteract.MouseButton1Click:Connect(function() self:_switch(name) end)
+        tabInteract.MouseEnter:Connect(function()
+            if self._active~=name then tw(tabBtn,.12,{BackgroundTransparency=0.55}) end
+        end)
+        tabInteract.MouseLeave:Connect(function()
+            if self._active~=name then tw(tabBtn,.12,{BackgroundTransparency=0.72}) end
+        end)
+
+        if not self._active then self:_switch(name) end
+
+        -- ── ELEMENT REGISTRY ──────────────────────────────────
+        local tabData = self._tabs[name]
+        local lo = 0
+        local function nextLO() lo=lo+1; return lo end
+        local function regElem(frame, nm)
+            local ed = {_frame=frame,_name=nm}
+            table.insert(tabData._elements, ed)
+            table.insert(x11._allElements, ed)
+            return ed
+        end
+
+        -- ═══════════════════════════════════════════════════════
+        -- ELEMENT CONTAINER BUILDER
+        -- ═══════════════════════════════════════════════════════
+        local function elemFrame(h)
+            local f = make("Frame",{
+                Size=UDim2.new(1,0,0,h or 38),
+                BackgroundColor3=T.ElementBG,
+                LayoutOrder=nextLO(),
+            }, tabScroll)
+            corner(f,6); stroke(f,T.ElementStroke,1)
+            -- Hover
+            local inter = btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1,ZIndex=2},f)
+            inter.MouseEnter:Connect(function() tw(f,.12,{BackgroundColor3=T.ElementBGHover}) end)
+            inter.MouseLeave:Connect(function() tw(f,.12,{BackgroundColor3=T.ElementBG}) end)
+            return f, inter
+        end
+
+        local Tab = {}
+
+        -- ── SECTION ───────────────────────────────────────────
+        function Tab:CreateSection(name2)
+            local sf = make("Frame",{
+                Size=UDim2.new(1,0,0,26),BackgroundTransparency=1,LayoutOrder=nextLO(),
+            }, tabScroll)
+            label({Size=UDim2.new(1,-4,1,0),Position=UDim2.new(0,2,0,0),
+                Text=name2:upper(),TextColor3=T.SectionText,TextSize=10,Font=Enum.Font.GothamBold},sf)
+            make("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,1,-1),
+                BackgroundColor3=T.Divider},sf)
+            regElem(sf, name2)
+        end
+
+        -- ── SEPARATOR ─────────────────────────────────────────
+        function Tab:CreateSeparator()
+            local sf = make("Frame",{
+                Size=UDim2.new(1,0,0,1),BackgroundColor3=T.Divider,
+                LayoutOrder=nextLO(),
+            }, tabScroll)
+            regElem(sf, "separator")
+        end
+
+        -- ── LABEL ─────────────────────────────────────────────
+        function Tab:CreateLabel(data2)
+            local txt = type(data2)=="string" and data2 or (data2.Text or "Label")
+            local para= type(data2)=="table" and (data2.Paragraph or "") or ""
+            local lf = make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1,LayoutOrder=nextLO(),
+            }, tabScroll)
+            padding(lf,0,4,2,2)
+            listLayout(lf,Enum.FillDirection.Vertical,2)
+            label({Size=UDim2.new(1,0,0,18),Text=txt,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},lf)
+            if para~="" then
+                label({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                    Text=para,TextColor3=T.SubText,TextSize=11,Font=Enum.Font.Gotham,TextWrapped=true},lf)
+            end
+            regElem(lf,txt)
+        end
+
+        -- ── PARAGRAPH ─────────────────────────────────────────
+        function Tab:CreateParagraph(data2)
+            local title2= data2.Title or ""
+            local content2 = data2.Content or (type(data2)=="string" and data2 or "")
+            local pf = make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            }, tabScroll)
+            corner(pf,6); stroke(pf,T.ElementStroke,1)
+            local inner2=make("Frame",{Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1},pf)
+            padding(inner2,10,10,14,14); listLayout(inner2,Enum.FillDirection.Vertical,4)
+            if title2~="" then
+                label({Size=UDim2.new(1,0,0,16),Text=title2,TextColor3=T.Text,TextSize=12,Font=Enum.Font.GothamBold},inner2)
+            end
+            label({Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                Text=content2,TextColor3=T.SubText,TextSize=11,Font=Enum.Font.Gotham,TextWrapped=true},inner2)
+            regElem(pf, title2~="" and title2 or content2:sub(1,30))
+        end
+
+        -- ── BUTTON ────────────────────────────────────────────
+        function Tab:CreateButton(data2)
+            local nm    = data2.Name or "Button"
+            local desc  = data2.Description or ""
+            local cb    = data2.Callback or function() end
+            local h     = desc~="" and 50 or 38
+            local f, _  = elemFrame(h)
+            label({Size=UDim2.new(1,-20,0,18),Position=UDim2.new(0,14,0,desc~="" and 8 or 10),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            if desc~="" then
+                label({Size=UDim2.new(1,-20,0,14),Position=UDim2.new(0,14,0,28),
+                    Text=desc,TextColor3=T.SubText,TextSize=11},f)
+            end
+            local ib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1,ZIndex=3},f)
+            ib.MouseButton1Click:Connect(function()
+                tw(f,.08,{BackgroundColor3=T.ElementBGActive})
+                task.wait(.08); tw(f,.15,{BackgroundColor3=T.ElementBG})
+                pcall(cb)
+            end)
+            regElem(f,nm)
+            return {Type="Button"}
+        end
+
+        -- ── TOGGLE ────────────────────────────────────────────
+        function Tab:CreateToggle(data2)
+            local nm  = data2.Name or "Toggle"
+            local desc= data2.Description or ""
+            local cur = data2.CurrentValue or false
+            local flag= data2.Flag
+            local cb  = data2.Callback or function() end
+            local h   = desc~="" and 50 or 38
+            local f,_ = elemFrame(h)
+
+            label({Size=UDim2.new(1,-70,0,18),Position=UDim2.new(0,14,0,desc~="" and 8 or 10),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            if desc~="" then
+                label({Size=UDim2.new(1,-70,0,14),Position=UDim2.new(0,14,0,28),
+                    Text=desc,TextColor3=T.SubText,TextSize=11},f)
+            end
+
+            -- Switch
+            local sw=make("Frame",{
+                Size=UDim2.new(0,42,0,20),Position=UDim2.new(1,-52,0.5,-10),
+                BackgroundColor3=cur and T.ToggleOn or T.ToggleOff,
+            },f); corner(sw,10)
+            local swStr=stroke(sw, cur and T.ToggleOn or T.ToggleOff, 1.5)
+            local knob=make("Frame",{
+                Size=UDim2.new(0,14,0,14),
+                Position=cur and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7),
+                BackgroundColor3=T.ToggleKnob,
+            },sw); corner(knob,7)
+
+            local el={Type="Toggle",CurrentValue=cur,_default=data2.CurrentValue}
+            if flag then x11.Flags[flag]=el end
+
+            local function setTog(v,fire)
+                el.CurrentValue=v
+                tw(sw,.2,{BackgroundColor3=v and T.ToggleOn or T.ToggleOff})
+                tw(swStr,.2,{Color=v and T.ToggleOn or T.ToggleOff})
+                tw(knob,.2,{Position=v and UDim2.new(1,-17,0.5,-7) or UDim2.new(0,3,0.5,-7)})
+                if fire then task.spawn(pcall,cb,v) end
+                if configEnabled then task.spawn(function() configObj:Save() end) end
+            end
+            el.Set=function(self2,v) cur=v; setTog(v,false) end
+
+            local ib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1,ZIndex=3},f)
+            ib.MouseButton1Click:Connect(function() cur=not cur; setTog(cur,true) end)
+            regElem(f,nm); return el
+        end
+
+        -- ── SLIDER ────────────────────────────────────────────
+        function Tab:CreateSlider(data2)
+            local nm   = data2.Name or "Slider"
+            local rng  = data2.Range or {0,100}
+            local inc  = data2.Increment or 1
+            local suf  = data2.Suffix or ""
+            local cur  = clamp(data2.CurrentValue or rng[1], rng[1], rng[2])
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+            local showInput = data2.ShowInput ~= false
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,54),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+
+            label({Size=UDim2.new(0.55,0,0,20),Position=UDim2.new(0,14,0,6),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+
+            local valLbl=label({
+                Size=UDim2.new(0.45,-10,0,20),Position=UDim2.new(0.55,0,0,6),
+                Text=tostring(cur)..(suf~="" and " "..suf or ""),
+                TextColor3=T.SubText,TextSize=12,TextXAlignment=Enum.TextXAlignment.Right,
+            },f)
+
+            local trackBG=make("Frame",{
+                Size=UDim2.new(1,-28,0,5),Position=UDim2.new(0,14,0,36),
+                BackgroundColor3=T.SliderBG,
+            },f); corner(trackBG,3)
+
+            local pct=(cur-rng[1])/(rng[2]-rng[1])
+            local fill=make("Frame",{Size=UDim2.new(pct,0,1,0),BackgroundColor3=T.SliderFill},trackBG)
+            corner(fill,3)
+            local knob2=make("Frame",{
+                Size=UDim2.new(0,11,0,11),AnchorPoint=Vector2.new(0.5,0.5),
+                Position=UDim2.new(pct,0,0.5,0),BackgroundColor3=T.SliderKnob,ZIndex=3,
+            },trackBG); corner(knob2,6)
+
+            local el={Type="Slider",CurrentValue=cur,_default=data2.CurrentValue}
+            if flag then x11.Flags[flag]=el end
+
+            local function updateSlider(v,fire)
+                v=round(clamp(v,rng[1],rng[2])/inc)*inc
+                v=clamp(v,rng[1],rng[2])
+                el.CurrentValue=v
+                local p=(v-rng[1])/(rng[2]-rng[1])
+                fill.Size=UDim2.new(p,0,1,0)
+                knob2.Position=UDim2.new(p,0,0.5,0)
+                valLbl.Text=tostring(v)..(suf~="" and " "..suf or "")
+                if fire then task.spawn(pcall,cb,v) end
+                if configEnabled then task.spawn(function() configObj:Save() end) end
+            end
+            el.Set=function(self2,v) updateSlider(v,false) end
+
+            local sliding=false
+            local si=btn({Size=UDim2.new(1,0,1,14),Position=UDim2.new(0,0,0,-7),
+                Text="",BackgroundTransparency=1,ZIndex=5},trackBG)
+            si.InputBegan:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1
+                or i.UserInputType==Enum.UserInputType.Touch then sliding=true end
+            end)
+            UIS.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1
+                or i.UserInputType==Enum.UserInputType.Touch then sliding=false end
+            end)
+            UIS.InputChanged:Connect(function(i)
+                if sliding and (i.UserInputType==Enum.UserInputType.MouseMovement
+                or i.UserInputType==Enum.UserInputType.Touch) then
+                    local ap=trackBG.AbsolutePosition.X
+                    local as=trackBG.AbsoluteSize.X
+                    local rx=clamp(i.Position.X-ap,0,as)
+                    updateSlider(rng[1]+(rng[2]-rng[1])*(rx/as),true)
+                end
+            end)
+
+            regElem(f,nm); return el
+        end
+
+        -- ── INPUT ─────────────────────────────────────────────
+        function Tab:CreateInput(data2)
+            local nm    = data2.Name or "Input"
+            local ph    = data2.PlaceholderText or ""
+            local mode  = data2.Mode or "text"  -- text | number | password
+            local clear = data2.RemoveTextAfterFocusLost or false
+            local flag  = data2.Flag
+            local cb    = data2.Callback or function() end
+
+            local f,_=elemFrame(38)
+            label({Size=UDim2.new(0,110,1,0),Position=UDim2.new(0,14,0,0),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+
+            local box=make("TextBox",{
+                Size=UDim2.new(1,-130,0,22),Position=UDim2.new(0,124,0.5,-11),
+                BackgroundColor3=T.InputBG,TextColor3=T.Text,
+                PlaceholderText=ph,PlaceholderColor3=T.Placeholder,
+                TextSize=12,Font=Enum.Font.Gotham,ClearTextOnFocus=false,
+                Text="",TextXAlignment=Enum.TextXAlignment.Left,
+            },f)
+            corner(box,4); stroke(box,T.InputStroke,1); padding(box,0,0,7,7)
+            if mode=="password" then
+                box:GetPropertyChangedSignal("Text"):Connect(function()
+                    -- handled visually via masking is complex in Roblox,
+                    -- so we store raw and show dots
+                end)
+            end
+
+            local el={Type="Input",CurrentValue="",_default=""}
+            if flag then x11.Flags[flag]=el end
+            el.Set=function(self2,v) box.Text=tostring(v); el.CurrentValue=tostring(v) end
+
+            box.FocusLost:Connect(function()
+                local v=box.Text
+                if mode=="number" then v=tonumber(v) or 0; box.Text=tostring(v) end
+                el.CurrentValue=v
+                task.spawn(pcall,cb,v)
+                if clear then box.Text="" end
+                if configEnabled then task.spawn(function() configObj:Save() end) end
+            end)
+            regElem(f,nm); return el
+        end
+
+        -- ── TEXTAREA ──────────────────────────────────────────
+        function Tab:CreateTextarea(data2)
+            local nm   = data2.Name or "Textarea"
+            local ph   = data2.PlaceholderText or ""
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,90),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+            label({Size=UDim2.new(1,-14,0,18),Position=UDim2.new(0,14,0,6),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            local box=make("TextBox",{
+                Size=UDim2.new(1,-20,0,58),Position=UDim2.new(0,10,0,26),
+                BackgroundColor3=T.InputBG,TextColor3=T.Text,
+                PlaceholderText=ph,PlaceholderColor3=T.Placeholder,
+                TextSize=12,Font=Enum.Font.Gotham,ClearTextOnFocus=false,
+                Text="",MultiLine=true,TextXAlignment=Enum.TextXAlignment.Left,
+                TextYAlignment=Enum.TextYAlignment.Top,
+            },f)
+            corner(box,4); stroke(box,T.InputStroke,1); padding(box,4,4,7,7)
+
+            local el={Type="Textarea",CurrentValue="",_default=""}
+            if flag then x11.Flags[flag]=el end
+            el.Set=function(self2,v) box.Text=tostring(v); el.CurrentValue=tostring(v) end
+            box.FocusLost:Connect(function()
+                el.CurrentValue=box.Text; task.spawn(pcall,cb,box.Text)
+            end)
+            regElem(f,nm); return el
+        end
+
+        -- ── DROPDOWN ──────────────────────────────────────────
+        function Tab:CreateDropdown(data2)
+            local nm    = data2.Name or "Dropdown"
+            local opts  = data2.Options or {}
+            local multi = data2.MultipleOptions or false
+            local cur   = data2.CurrentOption or {}
+            local flag  = data2.Flag
+            local cb    = data2.Callback or function() end
+            local searchable = data2.Searchable or false
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,38),BackgroundColor3=T.ElementBG,
+                LayoutOrder=nextLO(),ClipsDescendants=false,
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+
+            label({Size=UDim2.new(0,100,1,0),Position=UDim2.new(0,14,0,0),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            local selLbl=label({
+                Size=UDim2.new(1,-130,1,0),Position=UDim2.new(0,112,0,0),
+                Text=#cur>0 and table.concat(cur,", ") or "None",
+                TextColor3=T.SubText,TextSize=12,TextTruncate=Enum.TextTruncate.AtEnd,
+            },f)
+            local arrow=label({Size=UDim2.new(0,20,1,0),Position=UDim2.new(1,-22,0,0),
+                Text="▾",TextColor3=T.SubText,TextSize=13,Font=Enum.Font.GothamBold,
+                TextXAlignment=Enum.TextXAlignment.Center},f)
+
+            -- Modal
+            local modal=make("Frame",{
+                Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,1,4),
+                BackgroundColor3=T.DropdownBG,ClipsDescendants=true,ZIndex=20,Visible=false,
+            },f); corner(modal,6); stroke(modal,T.ElementStroke,1)
+
+            local modalScroll=make("ScrollingFrame",{
+                Size=UDim2.new(1,0,1,0),BackgroundTransparency=1,
+                ScrollBarThickness=2,ScrollBarImageColor3=T.ElementStroke,
+                CanvasSize=UDim2.new(0,0,0,0),AutomaticCanvasSize=Enum.AutomaticSize.Y,ZIndex=20,
+            },modal)
+            padding(modalScroll,4,4,4,4); listLayout(modalScroll,Enum.FillDirection.Vertical,2)
+
+            local sel={}
+            for _,v in ipairs(cur) do sel[v]=true end
+
+            local el={Type="Dropdown",CurrentOption=cur,_default=cur}
+            if flag then x11.Flags[flag]=el end
+
+            local ddOpen=false
+
+            local function refreshDisp()
+                local keys={}; for k in pairs(sel) do table.insert(keys,k) end
+                el.CurrentOption=keys
+                selLbl.Text=#keys>0 and table.concat(keys,", ") or "None"
+            end
+
+            local function buildModal(filter)
+                for _,c in ipairs(modalScroll:GetChildren()) do
+                    if not c:IsA("UIListLayout") and not c:IsA("UIPadding") then c:Destroy() end
+                end
+                for _,opt in ipairs(opts) do
+                    if not filter or opt:lower():find(filter:lower(),1,true) then
+                        local isSel=sel[opt]==true
+                        local ib2=btn({
+                            Size=UDim2.new(1,0,0,28),BackgroundColor3=isSel and T.DropdownHover or T.DropdownItem,
+                            BackgroundTransparency=0,Text="",ZIndex=21,
+                        },modalScroll)
+                        corner(ib2,4)
+                        label({Size=UDim2.new(1,-28,1,0),Position=UDim2.new(0,10,0,0),
+                            Text=opt,TextColor3=isSel and T.Text or T.SubText,
+                            TextSize=12,Font=isSel and Enum.Font.GothamBold or Enum.Font.Gotham,ZIndex=21},ib2)
+                        label({Size=UDim2.new(0,16,1,0),Position=UDim2.new(1,-18,0,0),
+                            Text=isSel and "✓" or "",TextColor3=T.Accent,TextSize=11,
+                            Font=Enum.Font.GothamBold,ZIndex=21,TextXAlignment=Enum.TextXAlignment.Center},ib2)
+                        ib2.MouseButton1Click:Connect(function()
+                            if multi then sel[opt]=not sel[opt]
+                            else sel={}; sel[opt]=true end
+                            refreshDisp(); buildModal(filter)
+                            local keys={}; for k in pairs(sel) do table.insert(keys,k) end
+                            task.spawn(pcall,cb,keys)
+                            if not multi then
+                                ddOpen=false
+                                tw(modal,.15,{Size=UDim2.new(1,0,0,0)}); tw(arrow,.15,{Rotation=0})
+                                task.wait(.15); modal.Visible=false
+                            end
+                            if configEnabled then task.spawn(function() configObj:Save() end) end
+                        end)
+                    end
+                end
+                -- Confirm/Cancel
+                local actRow=make("Frame",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1,ZIndex=21},modalScroll)
+                local cfm=btn({Size=UDim2.new(0,65,1,0),Text="Confirm",TextColor3=T.Accent,
+                    TextSize=11,Font=Enum.Font.GothamBold,ZIndex=22},actRow)
+                local cnc=btn({Size=UDim2.new(0,55,1,0),Position=UDim2.new(0,68,0,0),
+                    Text="Cancel",TextColor3=T.SubText,TextSize=11,ZIndex=22},actRow)
+                cfm.MouseButton1Click:Connect(function()
+                    ddOpen=false; tw(modal,.15,{Size=UDim2.new(1,0,0,0)}); tw(arrow,.15,{Rotation=0})
+                    task.wait(.15); modal.Visible=false
+                    local keys={}; for k in pairs(sel) do table.insert(keys,k) end
+                    task.spawn(pcall,cb,keys)
+                end)
+                cnc.MouseButton1Click:Connect(function()
+                    ddOpen=false; tw(modal,.15,{Size=UDim2.new(1,0,0,0)}); tw(arrow,.15,{Rotation=0})
+                    task.wait(.15); modal.Visible=false
+                end)
+            end
+
+            el.Set=function(self2,v)
+                sel={}
+                if type(v)=="table" then for _,x in ipairs(v) do sel[x]=true end
+                else sel[v]=true end
+                refreshDisp()
+            end
+            el.Refresh=function(self2,newOpts) opts=newOpts; if ddOpen then buildModal() end end
+
+            local ddInter=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1,ZIndex=5},f)
+            ddInter.MouseButton1Click:Connect(function()
+                ddOpen=not ddOpen
+                if ddOpen then
+                    modal.Visible=true; buildModal()
+                    task.wait(.01)
+                    local tH=math.min(#opts*30+36,220)
+                    tw(modal,.2,{Size=UDim2.new(1,0,0,tH)}); tw(arrow,.2,{Rotation=180})
+                else
+                    tw(modal,.15,{Size=UDim2.new(1,0,0,0)}); tw(arrow,.15,{Rotation=0})
+                    task.wait(.15); modal.Visible=false
+                end
+            end)
+            ddInter.MouseEnter:Connect(function() tw(f,.12,{BackgroundColor3=T.ElementBGHover}) end)
+            ddInter.MouseLeave:Connect(function() tw(f,.12,{BackgroundColor3=T.ElementBG}) end)
+
+            regElem(f,nm); return el
+        end
+
+        -- ── COLOR PICKER ──────────────────────────────────────
+        function Tab:CreateColorPicker(data2)
+            local nm   = data2.Name or "Color Picker"
+            local col  = data2.Color or Color3.fromRGB(255,255,255)
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+
+            local outer=make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(outer,6); stroke(outer,T.ElementStroke,1)
+
+            local ip=make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1,
+            },outer); padding(ip,10,12,14,14); listLayout(ip,Enum.FillDirection.Vertical,8)
+
+            -- Header
+            local hrow=make("Frame",{Size=UDim2.new(1,0,0,22),BackgroundTransparency=1},ip)
+            label({Size=UDim2.new(1,-70,1,0),Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},hrow)
+            local prev=make("Frame",{Size=UDim2.new(0,56,0,20),Position=UDim2.new(1,-56,0,1),
+                BackgroundColor3=col},hrow); corner(prev,4); stroke(prev,T.ElementStroke,1)
+
+            -- Saved swatches
+            local swatchRow=make("Frame",{Size=UDim2.new(1,0,0,18),BackgroundTransparency=1},ip)
+            listLayout(swatchRow,Enum.FillDirection.Horizontal,4)
+            local swatches={}
+            local defaultSwatches={
+                Color3.fromRGB(255,80,80), Color3.fromRGB(255,180,50),
+                Color3.fromRGB(80,220,80), Color3.fromRGB(80,160,255),
+                Color3.fromRGB(180,80,255), Color3.fromRGB(255,80,200),
+                Color3.fromRGB(255,255,255), Color3.fromRGB(0,0,0),
+            }
+            local function addSwatch(sc)
+                local sb=make("Frame",{Size=UDim2.new(0,18,0,18),BackgroundColor3=sc},swatchRow)
+                corner(sb,4)
+                local sib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1},sb)
+                sib.MouseButton1Click:Connect(function()
+                    col=sc; h2,s2,v2=Color3.toHSV(sc); updateCP(false)
+                end)
+            end
+            for _,sc in ipairs(defaultSwatches) do addSwatch(sc) end
+
+            -- SV Canvas
+            local canvas=make("ImageLabel",{
+                Size=UDim2.new(1,0,0,110),BackgroundColor3=Color3.fromRGB(255,0,0),
+                Image="rbxassetid://4155801252",ScaleType=Enum.ScaleType.Stretch,
+            },ip); corner(canvas,5); stroke(canvas,T.ElementStroke,1)
+            local cpk=make("Frame",{
+                Size=UDim2.new(0,10,0,10),AnchorPoint=Vector2.new(.5,.5),
+                Position=UDim2.new(1,0,0,0),BackgroundColor3=Color3.fromRGB(255,255,255),ZIndex=5,
+            },canvas); corner(cpk,5); stroke(cpk,Color3.fromRGB(0,0,0),1.5)
+
+            -- Hue bar
+            local hBar=make("ImageLabel",{
+                Size=UDim2.new(1,0,0,12),Image="rbxassetid://4155805523",ScaleType=Enum.ScaleType.Stretch,
+            },ip); corner(hBar,4); stroke(hBar,T.ElementStroke,1)
+            local hk=make("Frame",{
+                Size=UDim2.new(0,8,1,4),AnchorPoint=Vector2.new(.5,.5),Position=UDim2.new(0,0,.5,0),
+                BackgroundColor3=Color3.fromRGB(255,255,255),ZIndex=5,
+            },hBar); corner(hk,3); stroke(hk,Color3.fromRGB(0,0,0),1)
+
+            -- Alpha bar
+            local aBar=make("ImageLabel",{
+                Size=UDim2.new(1,0,0,12),Image="rbxassetid://698052001",ScaleType=Enum.ScaleType.Stretch,
+            },ip); corner(aBar,4); stroke(aBar,T.ElementStroke,1)
+            local ak=make("Frame",{
+                Size=UDim2.new(0,8,1,4),AnchorPoint=Vector2.new(.5,.5),Position=UDim2.new(1,0,.5,0),
+                BackgroundColor3=Color3.fromRGB(255,255,255),ZIndex=5,
+            },aBar); corner(ak,3); stroke(ak,Color3.fromRGB(0,0,0),1)
+
+            -- RGB + Hex row
+            local rgbRow=make("Frame",{Size=UDim2.new(1,0,0,24),BackgroundTransparency=1},ip)
+            listLayout(rgbRow,Enum.FillDirection.Horizontal,4)
+            local function makeRGBBox(ph2)
+                local b=make("TextBox",{
+                    Size=UDim2.new(0,44,1,0),BackgroundColor3=T.InputBG,
+                    TextColor3=T.Text,TextSize=11,Font=Enum.Font.GothamBold,
+                    PlaceholderText=ph2,PlaceholderColor3=T.Placeholder,
+                    ClearTextOnFocus=false,Text="",
+                },rgbRow); corner(b,4); stroke(b,T.InputStroke,1); padding(b,0,0,5,5)
+                return b
+            end
+            local rBox=makeRGBBox("R"); local gBox=makeRGBBox("G"); local bBox=makeRGBBox("B")
+            label({Size=UDim2.new(0,30,1,0),Text="RGB",TextColor3=T.SubText,TextSize=10,
+                Font=Enum.Font.Gotham,TextXAlignment=Enum.TextXAlignment.Center},rgbRow)
+            local hexBox=make("TextBox",{
+                Size=UDim2.new(1,-140,1,0),BackgroundColor3=T.InputBG,
+                TextColor3=T.Text,TextSize=11,Font=Enum.Font.GothamBold,
+                PlaceholderText="#FFFFFF",PlaceholderColor3=T.Placeholder,
+                ClearTextOnFocus=false,Text="",
+            },rgbRow); corner(hexBox,4); stroke(hexBox,T.InputStroke,1); padding(hexBox,0,0,5,5)
+
+            -- Action row
+            local actRow=make("Frame",{Size=UDim2.new(1,0,0,20),BackgroundTransparency=1},ip)
+            listLayout(actRow,Enum.FillDirection.Horizontal,8)
+            local cfmBtn=btn({Size=UDim2.new(0,58,1,0),Text="Confirm",TextColor3=T.Accent,TextSize=11,Font=Enum.Font.GothamBold},actRow)
+            local cncBtn=btn({Size=UDim2.new(0,50,1,0),Text="Cancel",TextColor3=T.SubText,TextSize=11},actRow)
+            local saveSwBtn=btn({Size=UDim2.new(0,80,1,0),Text="+ Swatch",TextColor3=T.SubText,TextSize=11},actRow)
+
+            local el={Type="ColorPicker",Color=col,Alpha=1,_default=col}
+            if flag then x11.Flags[flag]=el end
+
+            local h2,s2,v2=Color3.toHSV(col)
+            local alpha2=1
+            local saved=col
+
+            local function colorToHex(c)
+                return string.format("#%02X%02X%02X",
+                    math.floor(c.R*255),math.floor(c.G*255),math.floor(c.B*255))
+            end
+
+            local function updateCP(fire)
+                local c=Color3.fromHSV(h2,s2,v2)
+                col=c; el.Color=c; el.Alpha=alpha2
+                prev.BackgroundColor3=c
+                canvas.BackgroundColor3=Color3.fromHSV(h2,1,1)
+                cpk.Position=UDim2.new(s2,-5,1-v2,-5)
+                hk.Position=UDim2.new(h2,0,.5,0)
+                ak.Position=UDim2.new(alpha2,0,.5,0)
+                rBox.Text=tostring(math.floor(c.R*255))
+                gBox.Text=tostring(math.floor(c.G*255))
+                bBox.Text=tostring(math.floor(c.B*255))
+                hexBox.Text=colorToHex(c)
+                if fire then task.spawn(pcall,cb,c,alpha2) end
+            end
+
+            el.Set=function(self2,c)
+                h2,s2,v2=Color3.toHSV(c); alpha2=1; updateCP(false)
+            end
+
+            -- Canvas drag
+            local dragCanvas,dragHue,dragAlpha=false,false,false
+            local function makeDragTarget(obj, fn)
+                obj.InputBegan:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.MouseButton1
+                    or i.UserInputType==Enum.UserInputType.Touch then fn(true) end
+                end)
+            end
+            makeDragTarget(canvas,function() dragCanvas=true end)
+            makeDragTarget(hBar,function() dragHue=true end)
+            makeDragTarget(aBar,function() dragAlpha=true end)
+            UIS.InputEnded:Connect(function(i)
+                if i.UserInputType==Enum.UserInputType.MouseButton1
+                or i.UserInputType==Enum.UserInputType.Touch then
+                    dragCanvas=false; dragHue=false; dragAlpha=false
+                end
+            end)
+            UIS.InputChanged:Connect(function(i)
+                if i.UserInputType~=Enum.UserInputType.MouseMovement
+                and i.UserInputType~=Enum.UserInputType.Touch then return end
+                if dragCanvas then
+                    local ap=canvas.AbsolutePosition; local as=canvas.AbsoluteSize
+                    s2=clamp((i.Position.X-ap.X)/as.X,0,1)
+                    v2=1-clamp((i.Position.Y-ap.Y)/as.Y,0,1)
+                    updateCP(true)
+                elseif dragHue then
+                    local ap=hBar.AbsolutePosition; local as=hBar.AbsoluteSize
+                    h2=clamp((i.Position.X-ap.X)/as.X,0,1); updateCP(true)
+                elseif dragAlpha then
+                    local ap=aBar.AbsolutePosition; local as=aBar.AbsoluteSize
+                    alpha2=clamp((i.Position.X-ap.X)/as.X,0,1); updateCP(true)
+                end
+            end)
+            -- RGB box input
+            local function applyRGB()
+                local r2=tonumber(rBox.Text); local g2=tonumber(gBox.Text); local b2=tonumber(bBox.Text)
+                if r2 and g2 and b2 then
+                    local c=Color3.fromRGB(clamp(r2,0,255),clamp(g2,0,255),clamp(b2,0,255))
+                    h2,s2,v2=Color3.toHSV(c); updateCP(true)
+                end
+            end
+            rBox.FocusLost:Connect(applyRGB); gBox.FocusLost:Connect(applyRGB); bBox.FocusLost:Connect(applyRGB)
+            hexBox.FocusLost:Connect(function()
+                local hex=hexBox.Text:gsub("#","")
+                if #hex==6 then
+                    local r2=tonumber(hex:sub(1,2),16); local g2=tonumber(hex:sub(3,4),16); local b2=tonumber(hex:sub(5,6),16)
+                    if r2 and g2 and b2 then
+                        local c=Color3.fromRGB(r2,g2,b2); h2,s2,v2=Color3.toHSV(c); updateCP(true)
+                    end
+                end
+            end)
+            cfmBtn.MouseButton1Click:Connect(function() saved=col; task.spawn(pcall,cb,col,alpha2) end)
+            cncBtn.MouseButton1Click:Connect(function() h2,s2,v2=Color3.toHSV(saved); alpha2=1; updateCP(false) end)
+            saveSwBtn.MouseButton1Click:Connect(function() addSwatch(col) end)
+
+            updateCP(false)
+            regElem(outer,nm); return el
+        end
+
+        -- ── KEYBIND ───────────────────────────────────────────
+        function Tab:CreateKeybind(data2)
+            local nm       = data2.Name or "Keybind"
+            local curKey   = data2.CurrentKeybind or "None"
+            local hold     = data2.HoldToInteract or false
+            local onchange = data2.CallOnChange or false
+            local flag     = data2.Flag
+            local cb       = data2.Callback or function() end
+
+            local f,_=elemFrame(38)
+            label({Size=UDim2.new(1,-100,1,0),Position=UDim2.new(0,14,0,0),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+
+            local badge=btn({
+                Size=UDim2.new(0,84,0,22),Position=UDim2.new(1,-94,0.5,-11),
+                Text=curKey,TextColor3=T.Text,TextSize=11,Font=Enum.Font.GothamBold,
+                BackgroundColor3=T.InputBG,BackgroundTransparency=0,
+            },f); corner(badge,4); stroke(badge,T.InputStroke,1)
+
+            local el={Type="Keybind",CurrentKeybind=curKey,_default=data2.CurrentKeybind}
+            if flag then x11.Flags[flag]=el end
+            el.Set=function(self2,k) curKey=k; el.CurrentKeybind=k; badge.Text=k end
+
+            local listening=false
+            badge.MouseButton1Click:Connect(function()
+                listening=true; badge.Text="..."; badge.TextColor3=T.Accent
+            end)
+            UIS.InputBegan:Connect(function(i,proc)
+                if listening then
+                    if i.UserInputType==Enum.UserInputType.Keyboard then
+                        curKey=i.KeyCode.Name; el.CurrentKeybind=curKey
+                        badge.Text=curKey; badge.TextColor3=T.Text; listening=false
+                        if onchange then task.spawn(pcall,cb,curKey) end
+                        if configEnabled then task.spawn(function() configObj:Save() end) end
+                    end
+                elseif not proc and i.UserInputType==Enum.UserInputType.Keyboard then
+                    if i.KeyCode.Name==curKey and not hold then task.spawn(pcall,cb,curKey) end
+                end
+            end)
+            if hold then
+                UIS.InputEnded:Connect(function(i)
+                    if i.UserInputType==Enum.UserInputType.Keyboard and i.KeyCode.Name==curKey then
+                        task.spawn(pcall,cb,curKey)
+                    end
+                end)
+            end
+            regElem(f,nm); return el
+        end
+
+        -- ── PROGRESS BAR ──────────────────────────────────────
+        function Tab:CreateProgressBar(data2)
+            local nm    = data2.Name or "Progress"
+            local cur   = clamp(data2.CurrentValue or 0,0,100)
+            local max2  = data2.Max or 100
+            local suf   = data2.Suffix or "%"
+            local flag  = data2.Flag
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,48),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+
+            label({Size=UDim2.new(.6,0,0,18),Position=UDim2.new(0,14,0,6),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            local pctLbl=label({Size=UDim2.new(.4,-10,0,18),Position=UDim2.new(.6,0,0,6),
+                Text=tostring(cur)..suf,TextColor3=T.SubText,TextSize=12,TextXAlignment=Enum.TextXAlignment.Right},f)
+
+            local bgBar=make("Frame",{
+                Size=UDim2.new(1,-28,0,6),Position=UDim2.new(0,14,0,32),BackgroundColor3=T.ProgressBG,
+            },f); corner(bgBar,3)
+            local fgBar=make("Frame",{
+                Size=UDim2.new(cur/max2,0,1,0),BackgroundColor3=T.ProgressFG,
+            },bgBar); corner(fgBar,3)
+
+            local el={Type="Progress",CurrentValue=cur,_default=cur}
+            if flag then x11.Flags[flag]=el end
+            el.Set=function(self2,v)
+                v=clamp(v,0,max2); el.CurrentValue=v
+                tw(fgBar,.3,{Size=UDim2.new(v/max2,0,1,0)})
+                pctLbl.Text=tostring(v)..suf
+            end
+            regElem(f,nm); return el
+        end
+
+        -- ── NUMBER STEPPER ────────────────────────────────────
+        function Tab:CreateStepper(data2)
+            local nm   = data2.Name or "Stepper"
+            local cur2 = data2.CurrentValue or 0
+            local min2 = data2.Min or 0
+            local max2 = data2.Max or 10
+            local step = data2.Step or 1
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+
+            local f,_=elemFrame(38)
+            label({Size=UDim2.new(1,-120,1,0),Position=UDim2.new(0,14,0,0),
+                Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+
+            local ctrl=make("Frame",{
+                Size=UDim2.new(0,108,0,24),Position=UDim2.new(1,-116,0.5,-12),
+                BackgroundColor3=T.InputBG,
+            },f); corner(ctrl,5); stroke(ctrl,T.InputStroke,1)
+
+            local decBtn=btn({
+                Size=UDim2.new(0,28,1,0),Text="−",TextColor3=T.Text,TextSize=16,
+                Font=Enum.Font.GothamBold,BackgroundTransparency=1,
+            },ctrl)
+            local valBox=make("TextBox",{
+                Size=UDim2.new(1,-56,1,0),Position=UDim2.new(0,28,0,0),
+                BackgroundTransparency=1,TextColor3=T.Text,TextSize=12,
+                Font=Enum.Font.GothamBold,Text=tostring(cur2),ClearTextOnFocus=false,
+                TextXAlignment=Enum.TextXAlignment.Center,
+            },ctrl)
+            local incBtn=btn({
+                Size=UDim2.new(0,28,1,0),Position=UDim2.new(1,-28,0,0),
+                Text="+",TextColor3=T.Text,TextSize=14,Font=Enum.Font.GothamBold,BackgroundTransparency=1,
+            },ctrl)
+
+            local el={Type="Stepper",CurrentValue=cur2,_default=cur2}
+            if flag then x11.Flags[flag]=el end
+
+            local function setStepper(v,fire)
+                v=clamp(round(v),min2,max2); el.CurrentValue=v; valBox.Text=tostring(v)
+                if fire then task.spawn(pcall,cb,v) end
+                if configEnabled then task.spawn(function() configObj:Save() end) end
+            end
+            el.Set=function(self2,v) setStepper(v,false) end
+
+            decBtn.MouseButton1Click:Connect(function() setStepper(el.CurrentValue-step,true) end)
+            incBtn.MouseButton1Click:Connect(function() setStepper(el.CurrentValue+step,true) end)
+            valBox.FocusLost:Connect(function() setStepper(tonumber(valBox.Text) or el.CurrentValue,true) end)
+            regElem(f,nm); return el
+        end
+
+        -- ── RADIO GROUP ───────────────────────────────────────
+        function Tab:CreateRadioGroup(data2)
+            local nm   = data2.Name or "Radio"
+            local opts2= data2.Options or {}
+            local cur2 = data2.CurrentOption or (opts2[1] or "")
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+
+            local total=38+#opts2*28
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,total),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+            padding(f,0,0,14,14)
+
+            label({Size=UDim2.new(1,0,0,26),Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            make("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,26),BackgroundColor3=T.Divider},f)
+
+            local el={Type="RadioGroup",CurrentOption=cur2,_default=cur2}
+            if flag then x11.Flags[flag]=el end
+
+            local dotFrames={}
+            for i,opt in ipairs(opts2) do
+                local row=make("Frame",{
+                    Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,0,28+(i-1)*28),
+                    BackgroundTransparency=1,
+                },f)
+                local outer2=make("Frame",{
+                    Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,0,0.5,-7),
+                    BackgroundColor3=T.InputBG,
+                },row); corner(outer2,7); stroke(outer2,T.RadioOn,1.5)
+                local dot=make("Frame",{
+                    Size=UDim2.new(0,8,0,8),Position=UDim2.new(0.5,-4,0.5,-4),
+                    BackgroundColor3=T.RadioOn,Visible=opt==cur2,
+                },outer2); corner(dot,4)
+                dotFrames[opt]=dot
+                label({Size=UDim2.new(1,-22,1,0),Position=UDim2.new(0,20,0,0),
+                    Text=opt,TextColor3=opt==cur2 and T.Text or T.SubText,TextSize=12,
+                    Font=opt==cur2 and Enum.Font.GothamBold or Enum.Font.Gotham},row)
+                local rib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1},row)
+                rib.MouseButton1Click:Connect(function()
+                    el.CurrentOption=opt
+                    for o,d in pairs(dotFrames) do d.Visible=(o==opt) end
+                    task.spawn(pcall,cb,opt)
+                    if configEnabled then task.spawn(function() configObj:Save() end) end
+                end)
+            end
+            el.Set=function(self2,v)
+                el.CurrentOption=v
+                for o,d in pairs(dotFrames) do d.Visible=(o==v) end
+            end
+            regElem(f,nm); return el
+        end
+
+        -- ── CHECKBOX LIST ─────────────────────────────────────
+        function Tab:CreateCheckboxList(data2)
+            local nm   = data2.Name or "Checkboxes"
+            local opts2= data2.Options or {}
+            local cur2 = data2.CurrentOptions or {}
+            local flag = data2.Flag
+            local cb   = data2.Callback or function() end
+
+            local total=38+#opts2*30
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,total),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+            padding(f,0,0,14,14)
+
+            label({Size=UDim2.new(1,0,0,26),Text=nm,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},f)
+            make("Frame",{Size=UDim2.new(1,0,0,1),Position=UDim2.new(0,0,0,26),BackgroundColor3=T.Divider},f)
+
+            local selected={}
+            for _,v in ipairs(cur2) do selected[v]=true end
+
+            local el={Type="CheckboxList",CurrentOptions=cur2,_default=cur2}
+            if flag then x11.Flags[flag]=el end
+
+            local checks={}
+            for i,opt in ipairs(opts2) do
+                local row=make("Frame",{
+                    Size=UDim2.new(1,0,0,28),Position=UDim2.new(0,0,0,28+(i-1)*30),
+                    BackgroundTransparency=1,
+                },f)
+                local box2=make("Frame",{
+                    Size=UDim2.new(0,14,0,14),Position=UDim2.new(0,0,0.5,-7),
+                    BackgroundColor3=selected[opt] and T.CheckboxOn or T.InputBG,
+                },row); corner(box2,3); stroke(box2,T.CheckboxOn,1.5)
+                local chk=label({Size=UDim2.new(1,0,1,0),Text=selected[opt] and "✓" or "",
+                    TextColor3=Color3.fromRGB(255,255,255),TextSize=10,Font=Enum.Font.GothamBold,
+                    TextXAlignment=Enum.TextXAlignment.Center},box2)
+                checks[opt]={box=box2,chk=chk}
+                label({Size=UDim2.new(1,-22,1,0),Position=UDim2.new(0,20,0,0),
+                    Text=opt,TextColor3=T.SubText,TextSize=12},row)
+                local rib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1},row)
+                rib.MouseButton1Click:Connect(function()
+                    selected[opt]=not selected[opt]
+                    box2.BackgroundColor3=selected[opt] and T.CheckboxOn or T.InputBG
+                    chk.Text=selected[opt] and "✓" or ""
+                    local keys={}; for k,v2 in pairs(selected) do if v2 then table.insert(keys,k) end end
+                    el.CurrentOptions=keys
+                    task.spawn(pcall,cb,keys)
+                    if configEnabled then task.spawn(function() configObj:Save() end) end
+                end)
+            end
+            el.Set=function(self2,v)
+                selected={}
+                if type(v)=="table" then for _,x in ipairs(v) do selected[x]=true end end
+                for opt,cd in pairs(checks) do
+                    cd.box.BackgroundColor3=selected[opt] and T.CheckboxOn or T.InputBG
+                    cd.chk.Text=selected[opt] and "✓" or ""
+                end
+            end
+            regElem(f,nm); return el
+        end
+
+        -- ── ACCORDION ─────────────────────────────────────────
+        function Tab:CreateAccordion(data2)
+            local title2= data2.Title or "Accordion"
+            local startOpen = data2.Open or false
+
+            local wrapper=make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),ClipsDescendants=true,
+            },tabScroll); corner(wrapper,6); stroke(wrapper,T.ElementStroke,1)
+
+            local header=make("Frame",{
+                Size=UDim2.new(1,0,0,36),BackgroundTransparency=1,
+            },wrapper)
+            label({Size=UDim2.new(1,-40,1,0),Position=UDim2.new(0,14,0,0),
+                Text=title2,TextColor3=T.Text,TextSize=13,Font=Enum.Font.GothamBold},header)
+            local arrow=label({Size=UDim2.new(0,20,1,0),Position=UDim2.new(1,-24,0,0),
+                Text="▾",TextColor3=T.SubText,TextSize=13,Font=Enum.Font.GothamBold,
+                TextXAlignment=Enum.TextXAlignment.Center},header)
+
+            local body=make("Frame",{
+                Size=UDim2.new(1,0,0,0),Position=UDim2.new(0,0,0,36),
+                BackgroundTransparency=1,AutomaticSize=Enum.AutomaticSize.Y,Visible=startOpen,
+            },wrapper)
+            padding(body,4,8,10,10); listLayout(body,Enum.FillDirection.Vertical,5)
+
+            local open=startOpen
+            local hib=btn({Size=UDim2.new(1,0,1,0),Text="",BackgroundTransparency=1},header)
+            hib.MouseButton1Click:Connect(function()
+                open=not open
+                body.Visible=open
+                tw(arrow,.2,{Rotation=open and 180 or 0})
+                tw(header,.15,{BackgroundColor3=open and T.ElementBGHover or Color3.fromRGB(0,0,0)})
+                task.wait(.05); tw(header,.15,{BackgroundColor3=Color3.fromRGB(0,0,0)})
+                header.BackgroundTransparency=1
+            end)
+
+            -- The accordion body is itself a mini-tab that supports elements
+            local subTab={}
+            local subLO=0
+            local function subNext() subLO=subLO+1; return subLO end
+
+            -- Re-expose a subset of element creators inside accordion body
+            for _, mname in ipairs({"CreateButton","CreateToggle","CreateSlider","CreateInput","CreateLabel","CreateSeparator"}) do
+                subTab[mname] = function(self2, d2)
+                    -- Temporarily redirect tabScroll to body
+                    local origScroll=tabScroll
+                    -- We use a wrapper trick: create element with LayoutOrder
+                    local origLO=lo
+                    -- Directly parent to body
+                    local saved=tabScroll
+                    tabScroll=body
+                    lo=subLO
+                    Tab[mname](Tab,d2)
+                    subLO=lo; lo=origLO
+                    tabScroll=saved
+                end
+            end
+
+            regElem(wrapper,title2)
+            return subTab
+        end
+
+        -- ── BADGE ─────────────────────────────────────────────
+        function Tab:CreateBadge(data2)
+            local items = data2.Items or {}  -- {Text, Color, Icon}
+            local nm2   = data2.Name or "Badges"
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,0),AutomaticSize=Enum.AutomaticSize.Y,
+                BackgroundTransparency=1,LayoutOrder=nextLO(),
+            },tabScroll)
+            if nm2~="" then
+                label({Size=UDim2.new(1,0,0,18),Text=nm2,TextColor3=T.SectionText,TextSize=10,
+                    Font=Enum.Font.GothamBold},f)
+            end
+            local badgeRow=make("Frame",{
+                Size=UDim2.new(1,0,0,26),Position=UDim2.new(0,0,0,nm2~="" and 20 or 0),
+                BackgroundTransparency=1,
+            },f)
+            listLayout(badgeRow,Enum.FillDirection.Horizontal,6)
+            for _,item in ipairs(items) do
+                local bc=item.Color or T.Accent
+                local bf=make("Frame",{
+                    Size=UDim2.new(0,0,0,22),AutomaticSize=Enum.AutomaticSize.X,
+                    BackgroundColor3=bc,
+                },badgeRow); corner(bf,11)
+                padding(bf,0,0,10,10)
+                label({Size=UDim2.new(0,0,1,0),AutomaticSize=Enum.AutomaticSize.X,
+                    Text=(item.Icon and item.Icon.." " or "")..item.Text,
+                    TextColor3=Color3.fromRGB(255,255,255),TextSize=11,Font=Enum.Font.GothamBold,
+                    TextXAlignment=Enum.TextXAlignment.Center},bf)
+            end
+            if nm2~="" then f.Size=UDim2.new(1,0,0,46) end
+            regElem(f,nm2~="" and nm2 or "badges")
+        end
+
+        -- ── IMAGE ─────────────────────────────────────────────
+        function Tab:CreateImage(data2)
+            local imgId = data2.Image or ""
+            local h2    = data2.Height or 80
+            local nm2   = data2.Name or ""
+
+            local f=make("Frame",{
+                Size=UDim2.new(1,0,0,h2),BackgroundColor3=T.ElementBG,LayoutOrder=nextLO(),
+            },tabScroll); corner(f,6); stroke(f,T.ElementStroke,1)
+            make("ImageLabel",{
+                Size=UDim2.new(1,-16,1,-16),Position=UDim2.new(0,8,0,8),
+                BackgroundTransparency=1,Image=imgId,ScaleType=Enum.ScaleType.Fit,
+            },f)
+            if nm2~="" then
+                label({Size=UDim2.new(1,-16,0,16),Position=UDim2.new(0,8,1,-20),
+                    Text=nm2,TextColor3=T.SubText,TextSize=10},f)
+            end
+            regElem(f,nm2~="" and nm2 or "image")
+        end
+
+        return Tab
+    end -- CreateTab
+
+    -- Load config after window is built
+    if configEnabled then
+        task.delay(0.5, function() configObj:Load() end)
+    end
+
+    return Window
+end -- CreateWindow
+
+-- ═══════════════════════════════════════════════════════════════
+-- GLOBAL API
+-- ═══════════════════════════════════════════════════════════════
+function x11:GetThemeNames()
+    local names={}; for k in pairs(Themes) do table.insert(names,k) end
+    table.sort(names); return names
+end
+
+function x11:AddCustomTheme(name, themeTable)
+    local full={}
+    for k,v in pairs(Themes.Default) do full[k]=v end
+    for k,v in pairs(themeTable) do full[k]=v end
+    Themes[name]=full
+end
+
+function x11:GetFlag(flag)
+    return x11.Flags[flag]
+end
+
+function x11:Destroy()
+    Root:Destroy()
+end
+
+return x11
