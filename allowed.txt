@@ -1,12 +1,33 @@
--- kobi
-tomorrownevercam3, tommorrownevercam3
-10617874738, 10617833144
+// owner accounts
+tomorrownevercam3 // kobi
+10617874738 
+tomorownevercam3 
+10617833144
 
--- irib
-urnanhasimplants, mojoueisabottom
-9129506038, 10797871492
+urnanhasimplants // irib
+uid: 9129506038
+mojoueisabottom
+uid: 10797871492
 
-mardhiahmarnah2020, 20785522, Owlucywood, cartoon_eyes, 1321334922 -- 190426 gw
+// former team member(s)
+calfully
+uid: 654149661
+
+// regular accounts
+mardhiahmarnah2020
+uid: 2730209774
+
+ChaoticPhoenixMaster
+uid: 20785522
+
+Owlucywood
+uid: 2572077882
+
+cartoon_eyes
+uid: 308006504
+
+leilacaul10
+uid: 1321334922
 
 meatymerlin2point0
 uid: 10416047519
@@ -72,9 +93,9 @@ hccy0
 uid: 5005220956
 
 lLOVE_RAVIES
-uid:
+uid: 10391144335
 
-3hrae (is shared acc)
+3hrae
 uid: 170400198
 
 FunderscoreExtras
